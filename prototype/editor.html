@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-0.4.3 — עורך תמלול עם מדידת זמן</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px 90px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);
+  padding:22px 0;margin-bottom:20px}
+h1{margin:.1em 0;font-size:1.4rem}
+.lede{color:#DCCFE6;margin:0;font-size:.92rem;max-width:62ch}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;margin:0 0 18px}
+.panel h2{margin:0 0 10px;font-size:1.05rem;color:var(--plum)}
+select,button{font-family:inherit;font-size:.95rem}
+select{padding:9px 12px;border:1px solid var(--rule);border-radius:6px;background:#fff;width:100%}
+button{background:var(--amber);color:#1B1526;border:0;border-radius:6px;
+  padding:10px 18px;font-weight:700;cursor:pointer}
+button.sec{background:var(--plum);color:#F4EEF8}
+button.small{padding:5px 11px;font-size:.83rem}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+.seg{display:grid;grid-template-columns:74px 62px 1fr;gap:10px;align-items:start;
+  padding:9px 0;border-top:1px dashed var(--rule)}
+.seg:first-child{border-top:0}
+.seg .t{font-family:ui-monospace,Consolas,monospace;font-size:.78rem;color:var(--ink-soft);
+  direction:ltr;unicode-bidi:isolate;padding-top:9px}
+.seg textarea{width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px 10px;
+  font-family:inherit;font-size:.97rem;resize:vertical;min-height:42px;background:#fff}
+.seg textarea.edited{border-color:var(--teal);background:rgba(37,111,98,.05)}
+.seg .orig{font-size:.8rem;color:var(--ink-soft);margin-top:4px;display:none}
+.seg .orig.show{display:block}
+.flag{display:inline-block;width:8px;height:8px;border-radius:50%;margin-inline-end:5px}
+.flag.low{background:var(--magenta)}
+.flag.mid{background:var(--amber)}
+.flag.ok{background:var(--teal)}
+.lowword{background:rgba(190,54,112,.16);border-radius:3px;padding:0 2px}
+
+.timerbar{position:sticky;bottom:0;background:var(--plum);color:#F4EEF8;
+  padding:12px 20px;margin:0 -20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.timerbar .big{font-family:ui-monospace,Consolas,monospace;font-size:1.5rem;font-weight:700}
+.timerbar .lbl{font-size:.8rem;color:#DCCFE6}
+.timerbar .spacer{margin-inline-start:auto}
+.idle{color:var(--amber);font-size:.85rem}
+
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+.rd{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:10px 12px}
+.rd b{display:block;font-family:ui-monospace,Consolas,monospace;font-size:1.2rem}
+.rd small{color:var(--ink-soft);font-size:.78rem}
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin:10px 0}
+th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+th{background:var(--paper)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.4.3 — כמה דקות עריכה באמת נדרשות</h1>
+  <p class="lede">אי אפשר לענות על זה בהערכה. השעון כאן מודד <strong>זמן עריכה פעיל</strong> —
+  הוא נעצר אוטומטית אחרי 10 שניות של חוסר פעילות, כדי שהפסקה לא תיספר כעבודה.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>בחרי שיר</h2>
+  <select id="songSel"></select>
+  <div class="readout" id="preStats"></div>
+</div>
+
+<div class="note">
+  <strong>איך לעבוד:</strong> לחצי <strong>▶</strong> ליד שורה כדי לשמוע רק אותה, ותקני את הטקסט.
+  נקודה <span class="flag low"></span> אדומה = המודל לא היה בטוח בשורה,
+  <span class="flag mid"></span> כתומה = בינוני, <span class="flag ok"></span> ירוקה = בטוח.
+  מילים בודדות שהמודל התלבט בהן מסומנות ברקע אדום.
+  <br><br>
+  <strong>אל תשאפי לשלמות.</strong> תקני עד לרמה שהיית מוכנה לשיר ממנה — זה מה שאנחנו מודדים.
+</div>
+
+<div class="panel">
+  <h2>התמלול</h2>
+  <div style="margin-bottom:10px">
+    <button class="small sec" onclick="toggleOrig()">הצג/הסתר מקור</button>
+    <button class="small sec" onclick="stopAudio()">עצור נגינה</button>
+  </div>
+  <div id="segs"></div>
+</div>
+
+<div class="panel">
+  <h2>התוצאה</h2>
+  <button id="finishBtn" class="sec">סיימתי — חשב</button>
+  <div id="result"></div>
+</div>
+
+</div>
+
+<div class="timerbar">
+  <div><div class="big" id="clock">0:00</div><div class="lbl">זמן עריכה פעיל</div></div>
+  <div><div class="big" id="editCount">0</div><div class="lbl">שורות ששונו</div></div>
+  <div class="idle" id="idleMsg"></div>
+  <div class="spacer"></div>
+  <button class="small" onclick="resetTimer()">אפס שעון</button>
+</div>
+
+<audio id="au"></audio>
+
+<script>
+const SONGS = [
+  "דרוש נא (1)",
+  "אבי לרנר - ותהי שמחה",
+  "שי וינר - כנפי השכינה"
+];
+const IDLE_MS = 10000;   // inactivity longer than this does not count as work
+
+let data = null, song = null, original = [], stopAt = null;
+let activeMs = 0, lastTick = null, idle = true;
+
+const au = document.getElementById("au");
+document.getElementById("songSel").innerHTML =
+  SONGS.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
+document.getElementById("songSel").onchange = e=>load(SONGS[+e.target.value]);
+
+async function load(name){
+  song = name;
+  stopAudio();
+  const res = await fetch("../transcripts/" + encodeURIComponent(name) + ".vocals.json");
+  data = await res.json();
+  au.src = "../output/htdemucs/" + encodeURIComponent(name) + "/vocals.mp3";
+  original = data.segments.map(s=>s.text);
+  render();
+  resetTimer();
+  showPre();
+}
+
+function segConf(s){
+  if(!s.words || !s.words.length) return 1;
+  return s.words.reduce((a,w)=>a+w.prob,0)/s.words.length;
+}
+
+function showPre(){
+  const words = data.segments.flatMap(s=>s.words||[]);
+  const low = words.filter(w=>w.prob<0.5).length;
+  document.getElementById("preStats").innerHTML = `
+    <div class="rd"><b>${data.segments.length}</b><small>שורות</small></div>
+    <div class="rd"><b>${words.length}</b><small>מילים</small></div>
+    <div class="rd"><b>${low}</b><small>מילים בביטחון נמוך</small></div>
+    <div class="rd"><b>${(data.duration/60).toFixed(1)}</b><small>דקות שיר</small></div>`;
+}
+
+function render(){
+  document.getElementById("segs").innerHTML = data.segments.map((s,i)=>{
+    const c = segConf(s);
+    const cls = c<0.6 ? "low" : c<0.8 ? "mid" : "ok";
+    const marked = (s.words && s.words.length)
+      ? s.words.map(w=>w.prob<0.5
+          ? `<span class="lowword">${esc(w.w)}</span>` : esc(w.w)).join(" ")
+      : esc(s.text);
+    return `<div class="seg">
+      <div class="t"><span class="flag ${cls}"></span>${s.start.toFixed(1)}s</div>
+      <div><button class="small sec" data-play="${i}">▶</button></div>
+      <div>
+        <textarea data-seg="${i}" rows="1">${esc(s.text)}</textarea>
+        <div class="orig" data-orig="${i}">מקור: ${marked}</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  document.querySelectorAll("[data-play]").forEach(b=>
+    b.onclick = ()=>playSeg(+b.dataset.play));
+  document.querySelectorAll("[data-seg]").forEach(t=>{
+    t.addEventListener("input", ()=>{
+      touch();
+      const i = +t.dataset.seg;
+      t.classList.toggle("edited", t.value.trim() !== original[i].trim());
+      updateCount();
+    });
+    t.style.height = "auto"; t.style.height = t.scrollHeight + "px";
+  });
+}
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function playSeg(i){
+  const s = data.segments[i];
+  au.currentTime = Math.max(0, s.start - 0.15);
+  stopAt = s.end + 0.15;
+  au.play();
+  touch();
+}
+function stopAudio(){ au.pause(); stopAt = null; }
+au.addEventListener("timeupdate", ()=>{
+  if(stopAt !== null && au.currentTime >= stopAt){ au.pause(); stopAt = null; }
+});
+
+// ---- active-time clock ----
+function touch(){
+  const now = Date.now();
+  if(!idle && lastTick) activeMs += now - lastTick;
+  lastTick = now; idle = false;
+  document.getElementById("idleMsg").textContent = "";
+}
+setInterval(()=>{
+  const now = Date.now();
+  if(!idle && lastTick){
+    if(now - lastTick > IDLE_MS){
+      idle = true;
+      document.getElementById("idleMsg").textContent = "השעון עצר — אין פעילות";
+    } else {
+      activeMs += now - lastTick;
+      lastTick = now;
+    }
+  }
+  const s = Math.floor(activeMs/1000);
+  document.getElementById("clock").textContent =
+    Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+}, 500);
+document.addEventListener("keydown", touch);
+document.addEventListener("click", touch);
+
+function resetTimer(){
+  activeMs = 0; lastTick = null; idle = true;
+  document.getElementById("clock").textContent = "0:00";
+  document.getElementById("idleMsg").textContent = "";
+}
+function updateCount(){
+  const n = [...document.querySelectorAll("[data-seg]")]
+    .filter((t,i)=>t.value.trim() !== original[i].trim()).length;
+  document.getElementById("editCount").textContent = n;
+}
+function toggleOrig(){
+  document.querySelectorAll("[data-orig]").forEach(d=>d.classList.toggle("show"));
+}
+
+document.getElementById("finishBtn").onclick = ()=>{
+  const areas = [...document.querySelectorAll("[data-seg]")];
+  const edited = areas.map(t=>t.value.trim());
+  const changedLines = edited.filter((t,i)=>t !== original[i].trim()).length;
+
+  // word-level edit distance across the whole transcript
+  const ow = original.join(" ").split(/\s+/).filter(Boolean);
+  const ew = edited.join(" ").split(/\s+/).filter(Boolean);
+  const changedWords = wordDiff(ow, ew);
+
+  const minutes = activeMs/60000;
+  const songMin = data.duration/60;
+  const words = data.segments.flatMap(s=>s.words||[]);
+  const low = words.filter(w=>w.prob<0.5).length;
+
+  document.getElementById("result").innerHTML = `
+    <div class="readout">
+      <div class="rd"><b>${minutes.toFixed(1)}</b><small>דקות עריכה</small></div>
+      <div class="rd"><b>${(minutes/songMin).toFixed(2)}×</b><small>מול אורך השיר</small></div>
+      <div class="rd"><b>${changedLines}/${original.length}</b><small>שורות ששונו</small></div>
+      <div class="rd"><b>${changedWords}/${ow.length}</b><small>מילים ששונו</small></div>
+      <div class="rd"><b>${(minutes*60/Math.max(1,changedWords)).toFixed(1)}s</b>
+        <small>לכל מילה שתוקנה</small></div>
+      <div class="rd"><b>${low}</b><small>מילים בביטחון נמוך</small></div>
+    </div>
+    <div class="note">שמרי את המספרים האלה. אחרי 2–3 שירים אפשר לבדוק אם
+      <strong>מספר המילים בביטחון נמוך</strong> מנבא את זמן העריכה —
+      ואם כן, אפשר להעריך שיר חדש בלי לערוך אותו.</div>
+    <button class="sec" id="dlBtn">הורד תוצאה + טקסט מתוקן</button>`;
+
+  document.getElementById("dlBtn").onclick = ()=>{
+    const out = {task:"T-0.4.3", song, date:new Date().toISOString(),
+      song_minutes:+songMin.toFixed(2), edit_minutes:+minutes.toFixed(2),
+      ratio_to_song:+(minutes/songMin).toFixed(3),
+      lines_total:original.length, lines_changed:changedLines,
+      words_total:ow.length, words_changed:changedWords,
+      low_conf_words:low, mean_word_conf:
+        +(words.reduce((a,w)=>a+w.prob,0)/words.length).toFixed(3),
+      corrected_text:edited};
+    const blob = new Blob([JSON.stringify(out,null,1)],{type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "edit_0.4.3_" + song.replace(/[^\w֐-׿]+/g,"_") + ".json";
+    a.click();
+  };
+};
+
+// Levenshtein on word arrays, banded to stay fast on long transcripts
+function wordDiff(a, b){
+  const n=a.length, m=b.length;
+  if(!n) return m; if(!m) return n;
+  let prev=new Array(m+1), cur=new Array(m+1);
+  for(let j=0;j<=m;j++) prev[j]=j;
+  for(let i=1;i<=n;i++){
+    cur[0]=i;
+    for(let j=1;j<=m;j++){
+      cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[m];
+}
+
+load(SONGS[0]);
+</script>
+</body>
+</html>

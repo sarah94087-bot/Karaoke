@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>T-0.2.5 — בדיקת טלפון</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px 60px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);
+  padding:20px 0;margin-bottom:20px}
+h1{margin:.1em 0;font-size:1.3rem}
+.lede{color:#DCCFE6;margin:0;font-size:.9rem}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:16px;margin:0 0 16px}
+.panel h2{margin:0 0 10px;font-size:1.05rem;color:var(--plum)}
+button{background:var(--amber);color:#1B1526;border:0;border-radius:8px;
+  padding:14px 20px;font-family:inherit;font-weight:700;font-size:1rem;
+  cursor:pointer;width:100%;margin-bottom:8px}
+button.sec{background:var(--plum);color:#F4EEF8}
+button:disabled{opacity:.45}
+#dev{font-size:.82rem;color:var(--ink-soft);word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:.87rem;margin:10px 0}
+th,td{border:1px solid var(--rule);padding:7px 8px;text-align:right}
+th{background:var(--paper);font-size:.8rem}
+.ok{color:var(--teal);font-weight:700}
+.bad{color:var(--magenta);font-weight:700}
+.verdict{padding:14px;border-radius:8px;font-weight:700;margin-top:10px;font-size:.95rem}
+.verdict.pass{background:rgba(37,111,98,.14);color:var(--teal);border:1px solid var(--teal)}
+.verdict.fail{background:rgba(190,54,112,.14);color:var(--magenta);border:1px solid var(--magenta)}
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.88rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.88rem}
+#prog{height:6px;background:var(--rule);border-radius:3px;overflow:hidden;margin:8px 0}
+#progFill{height:100%;width:0;background:var(--teal);transition:width .2s}
+.big{font-family:ui-monospace,Consolas,monospace;font-size:2rem;font-weight:700;
+  text-align:center;color:var(--plum);direction:ltr;margin:8px 0}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.2.5 — בדיקת טלפון</h1>
+  <p class="lede">מוצא מאיזה מספר ערוצים המכשיר הזה נשבר.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>המכשיר</h2>
+  <div id="dev">…</div>
+</div>
+
+<div class="panel">
+  <h2>1 · מדידת עומס</h2>
+  <p style="margin:0 0 10px;font-size:.9rem;color:var(--ink-soft)">
+    מרנדר 6 שניות אודיו עם 1, 2, 3 ו־4 ערוצים — בסולם 0 ובסולם +6 (המקרה הגרוע).
+    מעל <span class="mono">100%</span> המכשיר לא עומד בקצב והאודיו ייקטע.
+  </p>
+  <div id="prog"><div id="progFill"></div></div>
+  <button id="benchBtn" disabled>טוען…</button>
+  <div id="benchOut"></div>
+</div>
+
+<div class="panel">
+  <h2>2 · מבחן האזנה אמיתי</h2>
+  <p style="margin:0 0 10px;font-size:.9rem;color:var(--ink-soft)">
+    מדידה היא לא הכל — צריך גם לשמוע אם יש קטיעות בפועל.
+    נגן, ואז שנה סולם. אם אתה שומע פצפוצים או הפסקות, המכשיר לא עומד בזה
+    <em>גם אם המספר למעלה נראה בסדר</em>.
+  </p>
+  <div class="big" id="keyDisp">0</div>
+  <button id="playBtn" disabled>נגן</button>
+  <button class="sec" id="upBtn">סולם +1</button>
+  <button class="sec" id="downBtn">סולם −1</button>
+  <button class="sec" id="stemsBtn">כרגע: 4 ערוצים — לחץ לצמצום</button>
+  <div id="playState" style="font-size:.85rem;color:var(--ink-soft);text-align:center"></div>
+</div>
+
+<div class="panel">
+  <h2>3 · התוצאה</h2>
+  <div id="summary" style="font-size:.9rem;color:var(--ink-soft)">
+    הרץ את המדידה למעלה, ואז האזן. אחר כך שלח את זה לעצמך.</div>
+  <button class="sec" id="copyBtn">העתק את התוצאות</button>
+</div>
+
+</div>
+
+<script>
+const SONG = "דרוש נא (1)";
+const BASE = "../output/htdemucs/" + encodeURIComponent(SONG) + "/";
+const STEMS = ["vocals","drums","bass","other"];
+let ctx, buffers = {}, node = null, gains = [], playing = false;
+let semitones = 0, activeStems = 4, benchResults = null;
+
+document.getElementById("dev").textContent =
+  navigator.userAgent + " · cores: " + (navigator.hardwareConcurrency || "?") +
+  " · mem: " + (navigator.deviceMemory || "?") + "GB";
+
+async function init(){
+  const btn = document.getElementById("benchBtn");
+  try{
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if(!ctx.audioWorklet) throw new Error(
+      "AudioWorklet לא זמין. הדף חייב להיטען דרך HTTPS (או localhost).");
+
+    const fill = document.getElementById("progFill");
+    let done = 0;
+    for(const s of STEMS){
+      const res = await fetch(BASE + s + ".mp3");
+      if(!res.ok) throw new Error("טעינת " + s + " נכשלה (" + res.status + ")");
+      buffers[s] = await ctx.decodeAudioData(await res.arrayBuffer());
+      fill.style.width = (++done/(STEMS.length+1)*100) + "%";
+    }
+    await ctx.audioWorklet.addModule("pitch-worklet.js");
+    fill.style.width = "100%";
+
+    btn.disabled = false; btn.textContent = "הרץ מדידה";
+    document.getElementById("playBtn").disabled = false;
+    document.getElementById("dev").textContent +=
+      " · " + ctx.sampleRate + "Hz";
+  }catch(e){
+    btn.textContent = "שגיאה";
+    document.getElementById("benchOut").innerHTML =
+      '<div class="verdict fail">' + e.message + '</div>';
+  }
+}
+
+function stemData(count){
+  return STEMS.slice(0,count).map(s=>({
+    name:s,
+    data:[buffers[s].getChannelData(0),
+          buffers[s].numberOfChannels>1 ? buffers[s].getChannelData(1)
+                                        : buffers[s].getChannelData(0)]
+  }));
+}
+
+async function bench(count, semis, secs){
+  const sr = 48000;
+  const off = new OfflineAudioContext(2, sr*secs, sr);
+  await off.audioWorklet.addModule("pitch-worklet.js");
+  const sd = stemData(count);
+  const n = new AudioWorkletNode(off,"pitch-processor",{
+    numberOfInputs:0, numberOfOutputs:count,
+    outputChannelCount:sd.map(()=>2),
+    processorOptions:{stems:sd, semitones:semis, playing:true}
+  });
+  const mix = off.createGain();
+  for(let i=0;i<count;i++) n.connect(mix,i);
+  mix.connect(off.destination);
+  const t0 = performance.now();
+  await off.startRendering();
+  const wall = (performance.now()-t0)/1000;
+  return {count, semis, wall, cpuPct:100*wall/secs};
+}
+
+document.getElementById("benchBtn").onclick = async ()=>{
+  const btn = document.getElementById("benchBtn");
+  btn.disabled = true;
+  const fill = document.getElementById("progFill");
+  const rows = [];
+  const combos = [];
+  for(const c of [1,2,3,4]) for(const s of [0,6]) combos.push([c,s]);
+
+  let i = 0;
+  for(const [c,s] of combos){
+    btn.textContent = "מודד… " + c + " ערוצים, סולם " + (s>0?"+"+s:s);
+    fill.style.width = (i/combos.length*100) + "%";
+    rows.push(await bench(c, s, 6));
+    i++;
+  }
+  fill.style.width = "100%";
+  benchResults = rows;
+
+  const byCount = {};
+  rows.forEach(r=>{ (byCount[r.count] = byCount[r.count] || {})[r.semis] = r.cpuPct; });
+
+  // "breaks at" = first stem count whose worst case exceeds the real-time budget
+  let breaksAt = null;
+  for(const c of [1,2,3,4]){
+    if(Math.max(byCount[c][0], byCount[c][6]) >= 100){ breaksAt = c; break; }
+  }
+  const maxOk = breaksAt ? breaksAt - 1 : 4;
+
+  document.getElementById("benchOut").innerHTML = `
+    <table>
+      <tr><th>ערוצים</th><th>סולם 0</th><th>סולם +6</th><th>מסקנה</th></tr>
+      ${[1,2,3,4].map(c=>{
+        const a = byCount[c][0], b = byCount[c][6], worst = Math.max(a,b);
+        return `<tr><td class="mono">${c}</td>
+          <td class="mono ${a<100?"ok":"bad"}">${a.toFixed(0)}%</td>
+          <td class="mono ${b<100?"ok":"bad"}">${b.toFixed(0)}%</td>
+          <td>${worst<70?"נוח":worst<100?"בגבול":"לא עומד"}</td></tr>`;
+      }).join("")}
+    </table>
+    <div class="verdict ${maxOk>=4?"pass":"fail"}">
+      ${maxOk>=4
+        ? "✓ המכשיר עומד ב־4 ערוצים עם שינוי סולם."
+        : maxOk>=1
+          ? "המכשיר עומד ב־" + maxOk + " ערוצים. נשבר ב־" + breaksAt + "."
+          : "✗ המכשיר לא עומד אפילו בערוץ אחד עם שינוי סולם."}
+    </div>
+    <div class="note">המספרים האלה הם רינדור לא מקוון, שרץ מהר ככל שהמעבד מסוגל.
+      נגינה אמיתית מחמירה יותר — לכן חשוב גם מבחן ההאזנה למטה.</div>`;
+  updateSummary();
+  btn.disabled = false; btn.textContent = "הרץ שוב";
+};
+
+// ---- listening test ----
+function buildNode(){
+  if(node){ try{ node.disconnect(); }catch(e){} }
+  gains.forEach(g=>{ try{ g.disconnect(); }catch(e){} });
+  gains = [];
+  const sd = stemData(activeStems);
+  node = new AudioWorkletNode(ctx,"pitch-processor",{
+    numberOfInputs:0, numberOfOutputs:activeStems,
+    outputChannelCount:sd.map(()=>2),
+    processorOptions:{stems:sd, semitones, playing}
+  });
+  for(let i=0;i<activeStems;i++){
+    const g = ctx.createGain();
+    node.connect(g,i); g.connect(ctx.destination);
+    gains.push(g);
+  }
+  node.port.onmessage = e=>{
+    if(e.data.type === "status")
+      document.getElementById("playState").textContent =
+        "מנגן · " + e.data.posSeconds.toFixed(1) + "s · " + activeStems + " ערוצים";
+  };
+}
+
+document.getElementById("playBtn").onclick = async ()=>{
+  await ctx.resume();
+  playing = !playing;
+  if(playing){ buildNode(); node.port.postMessage({type:"play"}); }
+  else if(node){ node.port.postMessage({type:"pause"}); }
+  document.getElementById("playBtn").textContent = playing ? "השהה" : "נגן";
+};
+function setKey(n){
+  semitones = Math.max(-6, Math.min(6, n));
+  document.getElementById("keyDisp").textContent = (semitones>0?"+":"") + semitones;
+  if(node) node.port.postMessage({type:"pitch", semitones});
+}
+document.getElementById("upBtn").onclick = ()=>setKey(semitones+1);
+document.getElementById("downBtn").onclick = ()=>setKey(semitones-1);
+document.getElementById("stemsBtn").onclick = ()=>{
+  activeStems = activeStems > 1 ? activeStems - 1 : 4;
+  document.getElementById("stemsBtn").textContent =
+    "כרגע: " + activeStems + " ערוצים — לחץ לצמצום";
+  if(playing){ buildNode(); node.port.postMessage({type:"play"}); }
+};
+
+function updateSummary(){
+  if(!benchResults) return;
+  const lines = ["T-0.2.5 — תוצאות בדיקת טלפון", new Date().toISOString(),
+    navigator.userAgent, "cores: " + (navigator.hardwareConcurrency||"?"),
+    "sampleRate: " + ctx.sampleRate, ""];
+  benchResults.forEach(r=>lines.push(
+    r.count + " ערוצים · סולם " + r.semis + " → " + r.cpuPct.toFixed(1) + "%"));
+  document.getElementById("summary").innerHTML =
+    '<pre class="mono" style="white-space:pre-wrap;font-size:.78rem">' +
+    lines.join("\n") + '</pre>';
+  window.__summaryText = lines.join("\n");
+}
+
+document.getElementById("copyBtn").onclick = async ()=>{
+  const t = window.__summaryText || "לא הורצה מדידה";
+  try{ await navigator.clipboard.writeText(t); alert("הועתק"); }
+  catch(e){ alert(t); }
+};
+
+init();
+</script>
+</body>
+</html>

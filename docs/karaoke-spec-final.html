@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אפיון מערכת — נגן קריוקי · גרסה 1.1 סופית</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Suez+One&family=Assistant:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EFECF4;--paper-2:#E5E0EE;--card:#FBFAFD;
+  --ink:#1B1526;--ink-soft:#4A4159;--plum:#4B2A5E;
+  --amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);--rule-strong:rgba(27,21,38,.28);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;
+  font-size:17px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1060px;margin:0 auto;padding:0 24px 120px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--magenta);direction:ltr;unicode-bidi:isolate}
+
+header.console{background:var(--plum);color:#F4EEF8;border-bottom:6px solid var(--teal);
+  padding:44px 0 0;margin-bottom:56px}
+header.console .wrap{padding-bottom:0}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--amber);direction:ltr;unicode-bidi:isolate}
+h1{font-family:"Suez One",Georgia,serif;font-size:clamp(2.2rem,5.5vw,3.6rem);
+  line-height:1.05;margin:.25em 0 .2em;font-weight:400}
+.lede{max-width:58ch;color:#DCCFE6;font-size:1.05rem;margin:0 0 34px}
+.strips{display:flex;gap:10px;align-items:flex-end;overflow:hidden}
+.strip{flex:1 1 0;min-width:0;background:rgba(0,0,0,.22);
+  border:1px solid rgba(244,238,248,.16);border-bottom:none;border-radius:6px 6px 0 0;
+  padding:12px 8px 14px;text-align:center}
+.fader{position:relative;height:82px;width:6px;margin:0 auto 10px;
+  background:rgba(244,238,248,.18);border-radius:3px}
+.cap{position:absolute;left:50%;transform:translateX(-50%);width:26px;height:12px;
+  border-radius:2px;background:var(--teal);box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.strip:nth-child(1) .cap{bottom:88%}
+.strip:nth-child(2) .cap{bottom:88%}
+.strip:nth-child(3) .cap{bottom:88%}
+.strip:nth-child(4) .cap{bottom:88%}
+.strip:nth-child(5) .cap{bottom:88%}
+.strip:nth-child(6) .cap{bottom:88%}
+.strip .ch{font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.12em;
+  color:rgba(244,238,248,.5);direction:ltr}
+.strip .nm{font-size:.82rem;color:#F4EEF8;line-height:1.3;margin-top:2px}
+
+nav.toc{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:20px 24px;margin:0 0 56px}
+nav.toc ol{margin:0;padding:0;list-style:none;columns:2;column-gap:34px}
+nav.toc li{padding:3px 0;break-inside:avoid}
+nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover{border-bottom-color:var(--magenta)}
+nav.toc .num{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--magenta);
+  margin-left:8px;direction:ltr;unicode-bidi:isolate}
+
+section{margin:0 0 64px;scroll-margin-top:20px}
+.sec-head{border-top:2px solid var(--ink);padding-top:10px;margin-bottom:22px}
+.sec-head .bar{height:5px;background:var(--teal);width:64px;margin-bottom:14px}
+h2{font-family:"Suez One",Georgia,serif;font-weight:400;font-size:1.75rem;margin:.1em 0;line-height:1.25}
+h3{font-size:1.12rem;font-weight:700;margin:32px 0 8px;color:var(--plum)}
+h4{font-size:.98rem;font-weight:700;margin:20px 0 6px}
+p{margin:0 0 14px}
+ul,ol{margin:0 0 14px;padding-inline-start:1.3em}
+li{margin:5px 0}
+code{font-family:"IBM Plex Mono",monospace;font-size:.86em;background:var(--paper-2);
+  padding:1px 5px;border-radius:4px;direction:ltr;unicode-bidi:isolate;display:inline-block}
+
+.layer{margin:0 0 8px}
+.layer-label{font-family:"IBM Plex Mono",monospace;font-size:.7rem;letter-spacing:.14em;
+  color:var(--ink-soft);text-transform:uppercase;margin-bottom:6px;direction:ltr;unicode-bidi:isolate}
+.boxes{display:flex;flex-wrap:wrap;gap:8px}
+.box{flex:1 1 150px;background:var(--card);border:1px solid var(--rule-strong);
+  border-radius:6px;padding:10px 12px;font-size:.9rem;line-height:1.45}
+.box b{display:block;font-size:.95rem}
+.box span{color:var(--ink-soft);font-size:.82rem}
+.box.accent{border-color:var(--teal);border-width:2px}
+.arrow{text-align:center;color:var(--ink-soft);font-size:1.1rem;margin:2px 0 8px}
+
+.tbl-scroll{overflow-x:auto;margin:0 0 18px}
+table{border-collapse:collapse;width:100%;font-size:.92rem;background:var(--card)}
+th,td{border:1px solid var(--rule);padding:8px 10px;text-align:right;vertical-align:top}
+th{background:var(--paper-2);font-weight:700;font-size:.86rem}
+td.ok{color:var(--teal);font-weight:700}
+
+pre.flow{background:var(--ink);color:#E8E1F0;border-radius:8px;padding:16px 18px;
+  overflow-x:auto;direction:ltr;text-align:left;
+  font-family:"IBM Plex Mono",monospace;font-size:.8rem;line-height:1.6}
+
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.07);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0;font-size:.95rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.07);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0;font-size:.95rem}
+.phase{background:var(--card);border:1px solid var(--rule);border-radius:8px;
+  padding:14px 18px;margin:0 0 10px}
+.phase .pn{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--magenta);
+  letter-spacing:.12em;direction:ltr;unicode-bidi:isolate}
+.budget{background:var(--card);border:1px solid var(--rule-strong);border-radius:8px;padding:16px 18px;margin:0 0 18px}
+.bar-row{display:flex;align-items:center;gap:12px;margin:6px 0;font-size:.9rem}
+.bar-row .lbl{flex:0 0 130px}
+.bar-row .track{flex:1;height:16px;background:var(--paper-2);border-radius:3px;position:relative;overflow:hidden}
+.bar-row .fill{position:absolute;top:0;bottom:0;background:var(--plum);border-radius:3px}
+.bar-row .fill.hot{background:var(--magenta)}
+.bar-row .fill.cool{background:var(--teal)}
+.bar-row .val{flex:0 0 84px;text-align:left;font-family:"IBM Plex Mono",monospace;font-size:.78rem;direction:ltr}
+.big-num{font-family:"Suez One",Georgia,serif;font-size:2.2rem;color:var(--teal);line-height:1;display:block;margin-bottom:2px}
+.stats{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 20px}
+.stat{flex:1 1 180px;background:var(--card);border:1px solid var(--rule-strong);border-radius:8px;padding:14px 16px}
+.stat small{color:var(--ink-soft);font-size:.85rem;display:block;line-height:1.4}
+footer{border-top:2px solid var(--ink);padding-top:18px;color:var(--ink-soft);font-size:.9rem}
+
+@media (max-width:720px){
+  body{font-size:16px}
+  nav.toc ol{columns:1}
+  .strips{gap:5px}.strip{padding:8px 3px 10px}
+  .strip .nm{font-size:.68rem}.fader{height:56px}
+  .bar-row .lbl{flex:0 0 96px;font-size:.8rem}
+  .bar-row .val{flex:0 0 68px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media print{header.console{background:#fff;color:#000;border-bottom:2px solid #000}
+  .strips{display:none}body{background:#fff}section{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<header class="console">
+  <div class="wrap">
+    <div class="kicker">SPEC v1.1 &nbsp;/&nbsp; ALL 31 LOCKED &nbsp;/&nbsp; BUILD READY</div>
+    <h1>נגן קריוקי<br>אפיון סופי</h1>
+    <p class="lede">31 החלטות סגורות. אתר פרטי, נפח נמוך, אפס עלות. כל הפאדרים למעלה — אין יותר החלטות פתוחות, יש רק לבנות.</p>
+    <div class="strips">
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 1</div><div class="nm">ייבוא</div></div>
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 2</div><div class="nm">הפרדה</div></div>
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 3</div><div class="nm">תמלול</div></div>
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 4</div><div class="nm">סנכרון</div></div>
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 5</div><div class="nm">סולם/קצב</div></div>
+      <div class="strip"><div class="fader"><i class="cap"></i></div><div class="ch">CH 6</div><div class="nm">נגינה</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <div class="eyebrow" style="margin-bottom:10px">תוכן עניינים</div>
+  <ol>
+    <li><a href="#s1"><span class="num">01</span>המספרים בקנה המידה שלך</a></li>
+    <li><a href="#s2"><span class="num">02</span>הסטאק הסופי</a></li>
+    <li><a href="#s3"><span class="num">03</span>ארכיטקטורה</a></li>
+    <li><a href="#s4"><span class="num">04</span>זרימה ותקציב זמן</a></li>
+    <li><a href="#s5"><span class="num">05</span>מודל נתונים</a></li>
+    <li><a href="#s6"><span class="num">06</span>ממשק API</a></li>
+    <li><a href="#s7"><span class="num">07</span>מנוע העיבוד</a></li>
+    <li><a href="#s8"><span class="num">08</span>נגן הקריוקי</a></li>
+    <li><a href="#s9"><span class="num">09</span>מכסות ותפעול</a></li>
+    <li><a href="#s10"><span class="num">10</span>מבנה פרויקט, סביבות ו־CI/CD</a></li>
+    <li><a href="#s11"><span class="num">11</span>תוכנית מילוט</a></li>
+    <li><a href="#s12"><span class="num">12</span>שלבי פיתוח ושלב 0</a></li>
+    <li><a href="#s13"><span class="num">13</span>מרשם ההחלטות המלא</a></li>
+    <li><a href="#s14"><span class="num">14</span>פריסה לענן — צעד אחר צעד</a></li>
+  </ol>
+</nav>
+
+<!-- ===== 01 ===== -->
+<section id="s1">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 01</div><h2>המספרים בקנה המידה שלך</h2></div>
+  <p>הבהרת שמדובר באתר פרטי בנפח נמוך. זה משנה את התמונה לטובה בצורה משמעותית, אז שווה לראות את החשבון בפועל. ההנחה: כ־30 שירים חדשים בחודש.</p>
+
+  <div class="stats">
+    <div class="stat"><span class="big-num">~30 דק'</span><small>זמן GPU חודשי לכל 30 השירים. הקרדיט החינמי החודשי מכסה פי 50–100 מזה.</small></div>
+    <div class="stat"><span class="big-num">~350MB</span><small>תוספת אחסון חודשית. מתוך מכסה חינמית של 10GB — יקח שנתיים למלא.</small></div>
+    <div class="stat"><span class="big-num">~30</span><small>בקשות תמלול בחודש. המסלול החינמי נותן אלפים ביום.</small></div>
+    <div class="stat"><span class="big-num">₪0</span><small>העלות הצפויה, בתנאי שלא מוכנס כרטיס אשראי לשום שירות.</small></div>
+  </div>
+
+  <div class="note"><strong>המסקנה החשובה:</strong> בקנה המידה שלך אין שום מתח בין "חינם" לבין "מהיר". המתח הזה קיים רק בקנה מידה גדול. את רחוקה מכל תקרה בסדר גודל שלם — מה שאומר שכל הפרק על מכסות (CH 09) הוא רשת ביטחון ולא אילוץ יומיומי.</div>
+
+  <h3>הדבר היחיד שבאמת עולה כסף</h3>
+  <p>שם מתחם. כל השאר חינמי לגמרי, אבל דומיין פרטי עולה כמה עשרות שקלים בשנה. הפתרון: <strong>להשתמש בתת־דומיין החינמי שספק האירוח נותן</strong> — בשימוש פרטי זה לגמרי מספיק, ותמיד אפשר לחבר דומיין משלך בהמשך.</p>
+
+  <div class="warn"><strong>כלל אחד לשמור עליו בקנאות:</strong> אל תכניסי כרטיס אשראי לשום שירות בפרויקט הזה. ברוב הפלטפורמות הכרטיס הוא ההבדל בין "השירות נעצר במכסה" לבין "החיוב ממשיך אוטומטית". בלי כרטיס, המקרה הגרוע הוא הפסקה זמנית — לא חשבון מפתיע.</div>
+</section>
+
+<!-- ===== 02 ===== -->
+<section id="s2">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 02</div><h2>הסטאק הסופי</h2></div>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>שכבה</th><th>הבחירה</th><th>למה</th></tr>
+    <tr><td>שפה</td><td>Python בצד שרת, TypeScript בצד לקוח</td><td><span class="mono">D-03</span>, <span class="mono">D-02</span></td></tr>
+    <tr><td>Backend</td><td>FastAPI</td><td>אסינכרוני, תיעוד אוטומטי, קל למסלול חינמי</td></tr>
+    <tr><td>Frontend</td><td>Next.js + i18n עם RTL כברירת מחדל</td><td><span class="mono">D-02</span>, <span class="mono">D-20</span></td></tr>
+    <tr><td>עבודות רקע</td><td><strong>אין תור נפרד</strong> — פלטפורמת ה־GPU היא התור, הסטטוס ב־Postgres</td><td><span class="mono">D-25</span> — הפשטה משמעותית</td></tr>
+    <tr><td>הפרדת ערוצים</td><td>Demucs, ארבעה ערוצים, על GPU ללא שרת</td><td><span class="mono">D-05</span>, <span class="mono">D-06</span>, <span class="mono">D-07</span></td></tr>
+    <tr><td>תמלול</td><td>API חיצוני מהיר במסלול חינמי, על התערובת ועל ערוץ השירה במקביל</td><td><span class="mono">D-27</span>, <span class="mono">D-29</span></td></tr>
+    <tr><td>מילים</td><td>מאגר פתוח → תמלול → עורך ידני. שורה כברירת מחדל, מילה כשהיישור בטוח</td><td><span class="mono">D-08</span>, <span class="mono">D-09</span></td></tr>
+    <tr><td>סולם וקצב</td><td>בזמן אמת בדפדפן, ספרייה ברישיון מתירן</td><td><span class="mono">D-10</span>, <span class="mono">D-11</span></td></tr>
+    <tr><td>אחסון</td><td>אחסון אובייקטים ללא עלות תעבורה, פורמט דחוס</td><td><span class="mono">D-12</span>, <span class="mono">D-13</span></td></tr>
+    <tr><td>בסיס נתונים</td><td>Postgres מנוהל במסלול חינמי קבוע</td><td><span class="mono">D-15</span></td></tr>
+    <tr><td>אימות</td><td>ספק מנוהל, מסלול חינמי</td><td><span class="mono">D-16</span></td></tr>
+    <tr><td>אירוח API</td><td>PaaS חינמי + keep-alive</td><td><span class="mono">D-23</span>, <span class="mono">D-26</span></td></tr>
+    <tr><td>התקדמות</td><td>SSE, כולל דיווח מוכנות חלקית</td><td><span class="mono">D-18</span>, <span class="mono">D-28</span></td></tr>
+    <tr><td>ניטור</td><td>מעקב שגיאות + אנליטיקת מוצר</td><td><span class="mono">D-24</span></td></tr>
+  </table>
+  </div>
+
+  <div class="note"><strong>מה שנעלם מהאפיון בזכות ההחלטות שלך:</strong> Redis, Celery, שרתי worker, ניהול תור, וכל התחזוקה שנלווית להם. הארכיטקטורה הסופית קטנה בערך בשליש מזו שהתחלנו איתה — וזה ההישג המשמעותי של הסבב הזה.</div>
+</section>
+
+<!-- ===== 03 ===== -->
+<section id="s3">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 03</div><h2>ארכיטקטורה</h2></div>
+
+  <div class="layer"><div class="layer-label">CLIENT</div>
+    <div class="boxes">
+      <div class="box"><b>Next.js</b><span>ספרייה · הוספת שיר · עורך מילים</span></div>
+      <div class="box accent"><b>מנוע אודיו</b><span>4 ערוצים · מיקסר · סולם · קצב</span></div>
+    </div></div>
+  <div class="arrow">↓</div>
+  <div class="layer"><div class="layer-label">API — FREE PaaS, ALWAYS AWAKE</div>
+    <div class="boxes">
+      <div class="box accent"><b>FastAPI</b><span>אימות · ספרייה · יצירת עבודות · סטטוס</span></div>
+      <div class="box"><b>SSE</b><span>התקדמות ומוכנות חלקית</span></div>
+      <div class="box"><b>Keep-alive</b><span>פינג חיצוני כל כמה דקות</span></div>
+    </div></div>
+  <div class="arrow">↓ &nbsp; spawn + call id</div>
+  <div class="layer"><div class="layer-label">SERVERLESS GPU — THE QUEUE ITSELF</div>
+    <div class="boxes">
+      <div class="box accent"><b>הפרדה</b><span>Demucs · 4 ערוצים</span></div>
+      <div class="box"><b>יישור מילים</b><span>חותמות זמן</span></div>
+      <div class="box"><b>נפח משקלים</b><span>מודלים שמורים מראש</span></div>
+    </div></div>
+  <div class="arrow">↓</div>
+  <div class="layer"><div class="layer-label">FREE EXTERNAL SERVICES</div>
+    <div class="boxes">
+      <div class="box"><b>תמלול</b><span>API מהיר · שתי ריצות במקביל</span></div>
+      <div class="box"><b>מאגר מילים</b><span>מילים מסונכרנות פתוחות</span></div>
+    </div></div>
+  <div class="arrow">↓</div>
+  <div class="layer"><div class="layer-label">DATA</div>
+    <div class="boxes">
+      <div class="box"><b>Postgres</b><span>משתמשים · שירים · מילים · <strong>מצב עבודות</strong></span></div>
+      <div class="box"><b>אחסון אובייקטים</b><span>ערוצים דחוסים · כתובות חתומות</span></div>
+    </div></div>
+
+  <h3>שלושה עקרונות שמחזיקים את זה</h3>
+  <ul>
+    <li><strong>ה־API לא מעבד אודיו לעולם.</strong> הוא מפעיל פונקציה מרוחקת, שומר מזהה קריאה, ומחזיר מיד. זה מה שמאפשר לו לחיות בשרת חינמי חלש.</li>
+    <li><strong>Postgres הוא מקור האמת למצב.</strong> אין תור בזיכרון, אין מצב שאובד בהפעלה מחדש. אחרי כל restart המערכת יודעת בדיוק איפה כל עבודה עמדה.</li>
+    <li><strong>כל ספק חיצוני עטוף בשכבת הפשטה דקה.</strong> קריאה אחת למודול, לא קריאות מפוזרות בקוד. ביום שספק משנה תנאים — מחליפים קובץ אחד.</li>
+  </ul>
+</section>
+
+<!-- ===== 04 ===== -->
+<section id="s4">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 04</div><h2>זרימה ותקציב זמן</h2></div>
+  <p>שיר של ארבע דקות. שימי לב לנקודת <strong>PLAYABLE</strong> — שם המשתמש כבר יכול לשיר, בערך בחצי הדרך.</p>
+
+  <div class="budget">
+    <div class="bar-row"><span class="lbl">קליטה ונרמול</span><span class="track"><span class="fill cool" style="right:0;width:12%"></span></span><span class="val">5–20s</span></div>
+    <div class="bar-row"><span class="lbl">התעוררות GPU</span><span class="track"><span class="fill hot" style="right:12%;width:14%"></span></span><span class="val">8–30s</span></div>
+    <div class="bar-row"><span class="lbl">הפרדת ערוצים</span><span class="track"><span class="fill" style="right:26%;width:30%"></span></span><span class="val">25–60s</span></div>
+    <div class="bar-row"><span class="lbl">קידוד והעלאה</span><span class="track"><span class="fill cool" style="right:56%;width:12%"></span></span><span class="val">10–25s</span></div>
+    <div class="bar-row" style="font-weight:700;color:var(--teal)"><span class="lbl">◀ PLAYABLE</span><span class="track" style="background:transparent"><span class="fill cool" style="right:0;width:68%;opacity:.18"></span></span><span class="val">0:48–2:15</span></div>
+    <div class="bar-row"><span class="lbl">תמלול ×2</span><span class="track"><span class="fill cool" style="right:26%;width:6%"></span></span><span class="val">2–8s ⟂</span></div>
+    <div class="bar-row"><span class="lbl">יישור מילים</span><span class="track"><span class="fill" style="right:68%;width:32%"></span></span><span class="val">20–40s</span></div>
+    <div class="bar-row" style="margin-top:12px;font-weight:700"><span class="lbl">READY מלא</span><span class="track" style="background:transparent"></span><span class="val">1:08–2:55</span></div>
+  </div>
+  <p style="font-size:.88rem;color:var(--ink-soft)">⟂ = רץ במקביל, לא מוסיף לזמן הכולל.</p>
+
+  <h3>מה קונות ההחלטות שלך</h3>
+  <ul>
+    <li><strong><span class="mono">D-28</span> — מוכנות מדורגת:</strong> ההמתנה הנתפסת יורדת לכ־50–130 שניות במקום 70–175. זה ההבדל הגדול ביותר בחוויה, והוא לא עלה שנייה אחת של עיבוד.</li>
+    <li><strong><span class="mono">D-27</span> — תמלול חיצוני:</strong> חוסך 30–60 שניות ומוריד את התקרה מתחת ל־3 דקות בביטחון.</li>
+    <li><strong><span class="mono">D-29</span> — תמלול כפול:</strong> הריצה על התערובת מתחילה מיד ורצה במקביל להפרדה, כך שכשההפרדה נגמרת כבר יש תמלול מוכן. אם התמלול על ערוץ השירה יוצא טוב יותר — מחליפים.</li>
+    <li><strong><span class="mono">D-26</span> — keep-alive:</strong> מבטל את קנס ההתעוררות של 30–60 שניות שהיה נופל על המשתמש הראשון.</li>
+  </ul>
+
+  <div class="note"><strong>שים לב למכסת השעות:</strong> חודש הוא כ־730 שעות, והמסלולים החינמיים נותנים בערך 750 שעות ריצה לחודש. זה מספיק בדיוק לשירות אחד שרץ 24/7 — ולא לשניים. כלומר: <strong>שירות backend אחד בלבד</strong> במסלול החינמי. זו אחת הסיבות שוויתרנו על worker נפרד.</div>
+</section>
+
+<!-- ===== 05 ===== -->
+<section id="s5">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 05</div><h2>מודל נתונים</h2></div>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>טבלה</th><th>שדות</th><th>הערות</th></tr>
+    <tr><td><code>users</code></td><td><span class="mono">id, email, display_name, created_at</span></td><td>מנוהל בעיקר בידי ספק האימות</td></tr>
+    <tr><td><code>songs</code></td><td><span class="mono">id, title, artist, duration_sec, source_type, source_ref, content_hash, original_key, bpm, status, is_playable, lyrics_status</span></td><td><span class="mono">is_playable</span> נפרד מ־<span class="mono">status</span> — זה הלב של המוכנות המדורגת</td></tr>
+    <tr><td><code>stems</code></td><td><span class="mono">id, song_id, kind, storage_key, format, bytes</span></td><td><span class="mono">kind</span> ∈ vocals · drums · bass · other</td></tr>
+    <tr><td><code>jobs</code></td><td><span class="mono">id, song_id, user_id, state, current_step, progress, remote_call_id, gpu_seconds, error_code, attempts, started_at, finished_at</span></td><td><span class="mono">remote_call_id</span> = הידית לפונקציה המרוחקת. בלעדיו אין מעקב</td></tr>
+    <tr><td><code>lyrics</code></td><td><span class="mono">id, song_id, language, source, is_verified, version</span></td><td><span class="mono">source</span> ∈ db · mix_asr · vocals_asr · manual</td></tr>
+    <tr><td><code>lyric_lines</code></td><td><span class="mono">id, lyrics_id, index, text, start_ms, end_ms, words_json</span></td><td><span class="mono">words_json</span> ריק כשהיישור ברמת שורה בלבד</td></tr>
+    <tr><td><code>library_items</code></td><td><span class="mono">user_id, song_id, added_at, last_played_at, is_favorite</span></td><td><span class="mono">last_played_at</span> מזין את מדיניות המחיקה</td></tr>
+    <tr><td><code>user_song_settings</code></td><td><span class="mono">user_id, song_id, key_shift, tempo_ratio, stem_volumes_json, lyric_offset_ms</span></td><td>נשמר אוטומטית בכל שינוי בנגן</td></tr>
+    <tr><td><code>usage_quota</code></td><td><span class="mono">user_id, period, songs_processed, gpu_seconds, storage_bytes</span></td><td>רשת ביטחון, לא אילוץ יומיומי</td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ===== 06 ===== -->
+<section id="s6">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 06</div><h2>ממשק API</h2></div>
+  <p>REST תחת <code>/api/v1</code>, אימות ב־Bearer, <code>request_id</code> בכל תשובה.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>Endpoint</th><th>תיאור</th></tr>
+    <tr><td><span class="mono">POST /songs/upload-url</span></td><td>כתובת העלאה חתומה — הקובץ עולה ישירות לאחסון, לא דרך ה־API</td></tr>
+    <tr><td><span class="mono">POST /songs</span></td><td>יצירת שיר והפעלת הפונקציה המרוחקת. מחזיר <span class="mono">job_id</span> מיד</td></tr>
+    <tr><td><span class="mono">GET /jobs/{id}</span></td><td>סטטוס — שלב נוכחי, אחוז, ו־<span class="mono">is_playable</span></td></tr>
+    <tr><td><span class="mono">GET /jobs/{id}/events</span></td><td>SSE — כולל אירוע <span class="mono">playable</span> לפני <span class="mono">ready</span></td></tr>
+    <tr><td><span class="mono">GET /songs/{id}</span></td><td>פרטים + ערוצים בכתובות חתומות + מצב מילים</td></tr>
+    <tr><td><span class="mono">GET /songs/{id}/lyrics</span></td><td>מילים מתוזמנות. עשוי להחזיר 202 כשעדיין בעיבוד</td></tr>
+    <tr><td><span class="mono">PUT /songs/{id}/lyrics</span></td><td>עריכה ידנית — יוצר גרסה חדשה, לא דורס</td></tr>
+    <tr><td><span class="mono">POST /songs/{id}/reprocess</span></td><td>הרצה מחדש של שלב בודד</td></tr>
+    <tr><td><span class="mono">GET /library</span></td><td>ספרייה אישית, עם חיפוש ועימוד</td></tr>
+    <tr><td><span class="mono">PUT /library/{song_id}/settings</span></td><td>שמירת סולם, קצב ומיקס</td></tr>
+    <tr><td><span class="mono">DELETE /library/{song_id}</span></td><td>הסרה — כולל פינוי אחסון</td></tr>
+    <tr><td><span class="mono">GET /me/quota</span></td><td>מצב מכסה ואחסון</td></tr>
+    <tr><td><span class="mono">GET /system/health</span></td><td>יעד ה־keep-alive. חייב להיות זול מאוד</td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ===== 07 ===== -->
+<section id="s7">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 07</div><h2>מנוע העיבוד</h2></div>
+<pre class="flow">
+  queued
+    |
+    v
+  ingesting [API]  5-20s
+    |
+    +--------------------------------+
+    |                                |
+    v                                v
+  separating [remote GPU]          transcribing MIX [free API]
+    35-90s                           2-8s   (runs in parallel)
+    |                                |
+    v                                |
+  transcribing VOCALS [free API]     |
+    2-8s                             |
+    |                                |
+    +--------------+-----------------+
+                   |
+                   v
+          pick better transcript
+                   |
+    +--------------+-----------------+
+    |                                |
+    v                                v
+  encoding + upload                aligning [GPU]
+    10-25s                           20-40s
+    |                                |
+    v                                |
+  ### PLAYABLE ###                   |
+  player opens, user can sing        |
+    |                                |
+    +--------------+-----------------+
+                   |
+                   v
+                 ready
+              lyrics stream in
+</pre>
+
+  <h3>כללי תפעול</h3>
+  <ul>
+    <li><strong>מדידת <code>gpu_seconds</code> בכל עבודה.</strong> הדרך היחידה לדעת כמה קרדיט נשאר.</li>
+    <li><strong>תקרת אורך שיר: 8 דקות.</strong></li>
+    <li><strong>אין ניסיון חוזר אוטומטי על שלב GPU.</strong> מדווחים למשתמש ונותנים לו להחליט — ניסיון חוזר עולה קרדיטים כפולים.</li>
+    <li><strong>כשל ביישור אינו כשל בעבודה.</strong> נופלים לשורה, ובמקרה הגרוע למילים ללא תזמון עם הזמנה לעורך.</li>
+    <li><strong>כשל בתמלול אינו כשל בעבודה.</strong> השיר נגיש לנגינה, המילים מסומנות כחסרות.</li>
+    <li><strong>אידמפוטנטיות:</strong> כל שלב ניתן להרצה חוזרת לבד, על בסיס תוצרי הביניים השמורים.</li>
+  </ul>
+</section>
+
+<!-- ===== 08 ===== -->
+<section id="s8">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 08</div><h2>נגן הקריוקי</h2></div>
+
+  <h3>מסכים</h3>
+  <ol>
+    <li><strong>ספרייה</strong> — רשימה, חיפוש, מצב עיבוד, הוספה</li>
+    <li><strong>הוספת שיר</strong> — העלאה או כתובת, מצב מכסה</li>
+    <li><strong>עיבוד</strong> — שלבים חיים בעברית, וכפתור "אפשר להתחיל לשיר" שנדלק ב־PLAYABLE</li>
+    <li><strong>נגן</strong> — המסך המרכזי</li>
+    <li><strong>עורך מילים</strong> — שורות, זמנים, נגינה מכל שורה, "תפוס זמן"</li>
+    <li><strong>חשבון</strong> — מכסה, העדפות, מחיקת נתונים</li>
+  </ol>
+
+  <h3>מסך הנגן</h3>
+  <div class="boxes">
+    <div class="box"><b>אזור מילים</b><span>שורה נוכחית גדולה · הבאה מעומעמת · הדגשת מילה כשיש</span></div>
+    <div class="box"><b>ציר זמן</b><span>צורת גל · לולאת A–B</span></div>
+    <div class="box accent"><b>מיקסר</b><span>4 פסים + כפתור "הסר שירה" גדול</span></div>
+    <div class="box"><b>סולם</b><span>−6 עד +6 חצאי טונים</span></div>
+    <div class="box"><b>קצב</b><span>50%–150%</span></div>
+    <div class="box"><b>כיוונון מילים</b><span>הזזה ב־± מילישניות</span></div>
+  </div>
+
+  <h3>שלוש דרישות קשיחות</h3>
+  <ul>
+    <li><strong>שעון מרכזי אחד</strong> של מנוע האודיו הוא מקור האמת לכל דבר — ערוצים ומילים כאחד. אין טיימרים של דפדפן.</li>
+    <li><strong>מצב "מילים בדרך"</strong> — אזור המילים מציג מצב ביניים מכובד, והמילים נכנסות תוך כדי נגינה. נובע מ־<span class="mono">D-28</span> וחייב להיות בעיצוב מההתחלה.</li>
+    <li><strong>נפילה לשני ערוצים במובייל</strong> אם ארבעה + עיבוד סולם מכבידים מדי. נבדק בשלב 0 על מכשיר אמיתי.</li>
+  </ul>
+</section>
+
+<!-- ===== 09 ===== -->
+<section id="s9">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 09</div><h2>מכסות ותפעול</h2></div>
+  <p>בנפח שלך המכסות כמעט לא ייגעו. הן קיימות כדי שתקלה או ניסוי לא ישרפו חודש.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>מכסה</th><th>ערך</th></tr>
+    <tr><td>שירים חדשים למשתמש בחודש</td><td>10</td></tr>
+    <tr><td>אורך שיר</td><td>8 דקות</td></tr>
+    <tr><td>עבודות במקביל למשתמש</td><td>1</td></tr>
+    <tr><td>אחסון למשתמש</td><td>~300MB</td></tr>
+    <tr><td>מחיקה אוטומטית</td><td>שיר שלא נוגן 6 חודשים — המטא־דאטה נשארת, הקבצים נמחקים</td></tr>
+  </table>
+  </div>
+  <p><strong>בחריגה (<span class="mono">D-30</span>):</strong> הודעה ברורה בעברית שמסבירה מה נגמר, כמה נשאר, ומציעה למחוק שיר ישן כדי לפנות מקום — עם רשימת המועמדים הכי פחות מנוגנים. לעולם לא עצירה שקטה שנראית כמו תקלה.</p>
+</section>
+
+<!-- ===== 10 ===== -->
+<section id="s10">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 10</div><h2>מבנה פרויקט, סביבות ו־CI/CD</h2></div>
+<pre class="flow">
+karaoke/
+  apps/
+    api/              # FastAPI
+    web/              # Next.js
+    gpu/              # remote GPU functions (separation, alignment)
+  packages/
+    core/             # domain models, shared schemas
+    audio/            # normalize, encode, analysis (bpm, key)
+    lyrics/           # providers, ASR clients, LRC I/O, alignment
+    providers/        # thin wrappers: storage, gpu, asr, auth
+  infra/
+    docker/
+    github/
+  docs/
+    spec.html
+</pre>
+  <p><code>packages/providers/</code> הוא לא קישוט. הוא מה שהופך החלפת ספק ביום שמסלול חינמי משתנה מפרויקט של שבוע לעבודה של שעה.</p>
+
+  <h3>סביבות</h3>
+  <ul>
+    <li><strong>מקומית</strong> — Docker Compose: API + Postgres. הפרדה מקומית על CPU (איטית, אבל חינם ובלי תלות).</li>
+    <li><strong>ייצור</strong> — סביבה אחת בלבד. Staging הוא מותרות שעולות מכסה, ובנפח הזה לא מוצדק. מה שכן מוצדק: <strong>דגלי פיצ'רים</strong> כדי לשחרר חלקית.</li>
+  </ul>
+
+  <h3>CI/CD</h3>
+  <ul>
+    <li>בכל PR: lint, בדיקות טיפוסים, בדיקות יחידה.</li>
+    <li>מיזוג ל־<code>main</code>: פריסה אוטומטית.</li>
+    <li>מיגרציות DB כשלב נפרד לפני הקוד החדש, תמיד תואמות לאחור.</li>
+    <li>בדיקת אינטגרציה על קובץ אודיו קבוע של 10 שניות — מהיר, דטרמיניסטי, וכמעט לא צורך משאבים.</li>
+  </ul>
+</section>
+
+<!-- ===== 11 ===== -->
+<section id="s11">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 11</div><h2>תוכנית מילוט</h2></div>
+  <p>הסיכון האמיתי היחיד בארכיטקטורה חינמית הוא לא טכני — הוא שספק ישנה תנאים. שווה לדעת מראש מה עושים.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>אם זה נופל</th><th>המילוט</th><th>כמה זה כואב</th></tr>
+    <tr><td>הקרדיט החינמי ל־GPU</td><td><strong>worker על המחשב שלך</strong> — סקריפט שמושך עבודות מה־API ומחזיר תוצאות. חינם לנצח, עובד רק כשהמחשב דלוק</td><td>נמוך — זו בדיוק המשימה שנכתבת בשלב 0.1</td></tr>
+    <tr><td>API התמלול החינמי</td><td>מודל תמלול על ה־GPU שלנו (או על המחשב שלך)</td><td>נמוך — עולה זמן, לא כסף</td></tr>
+    <tr><td>אירוח ה־API</td><td>מעבר לספק חינמי אחר; הקוד עטוף ב־Docker וזז בקלות</td><td>בינוני — יום עבודה</td></tr>
+    <tr><td>מכסת האחסון</td><td>מדיניות מחיקה אגרסיבית יותר, או אחסון על המחשב שלך</td><td>נמוך בנפח הזה</td></tr>
+    <tr><td>ספק בסיס הנתונים</td><td>Postgres זז בשלוש פקודות — dump, restore, עדכון connection string</td><td>נמוך</td></tr>
+  </table>
+  </div>
+  <div class="note"><strong>המילוט הכי חזק שיש לך:</strong> בנפח פרטי, <em>כל</em> הפרויקט יכול לרוץ על המחשב שלך אם יהיה צריך. הענן הוא נוחות כאן, לא הכרח. זו עמדה חזקה מאוד מול כל שינוי מדיניות של כל ספק — ושווה לשמר אותה בכוונה: כל דבר שהמערכת עושה, צריך להיות אפשרי להריץ מקומית.</div>
+</section>
+
+<!-- ===== 12 ===== -->
+<section id="s12">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 12</div><h2>שלבי פיתוח ושלב 0</h2></div>
+
+  <div class="phase"><div class="pn">PHASE 0 — PROOF</div>שש המשימות למטה. מוכיחים שהמוצר אפשרי לפני שבונים אותו.</div>
+  <div class="phase"><div class="pn">PHASE 1 — CORE LOOP</div>העלאת קובץ → הפרדה → נגן מלא עם מיקסר, סולם וקצב. משתמש יחיד, בלי ענן.</div>
+  <div class="phase"><div class="pn">PHASE 2 — LYRICS</div>תמלול, יישור, מילים רצות, עורך ידני.</div>
+  <div class="phase"><div class="pn">PHASE 3 — CLOUD</div>חשבונות, ספרייה, GPU מרוחק, אחסון, מכסות, פריסה, keep-alive.</div>
+  <div class="phase"><div class="pn">PHASE 4 — IMPORT</div>ייבוא ממקור חיצוני, כמודול מבודד שאפשר לכבות.</div>
+  <div class="phase"><div class="pn">PHASE 5 — POLISH</div>מסך מלא, תור השמעה, לולאת A–B, PWA, מובייל.</div>
+
+  <h3>שלב 0 — שש המשימות</h3>
+  <div class="phase"><div class="pn">TASK 0.1</div><strong>סקריפט הפרדה מקומי.</strong> קובץ נכנס → ארבעה ערוצים יוצאים. 5–10 שירים מהרפרטואר שלך. <em>הליווי נשמע נקי מספיק לשירה?</em></div>
+  <div class="phase"><div class="pn">TASK 0.2</div><strong>אב־טיפוס אודיו בדפדפן.</strong> דף HTML יחיד: ארבעה ערוצים מסונכרנים + סולם + קצב. נבדק גם על טלפון. <em>הסנכרון מחזיק? הטלפון עומד בזה?</em></div>
+  <div class="phase"><div class="pn">TASK 0.3</div><strong>אותה הפרדה על GPU מרוחק.</strong> מודדים זמן התעוררות וזמן עיבוד. <em>הסכום מתחת ל־90 שניות?</em></div>
+  <div class="phase"><div class="pn">TASK 0.4</div><strong>תמלול בעברית.</strong> שלושה שירים, על התערובת ועל ערוץ השירה. משווים. <em>כמה עריכה ידנית באמת נדרשת?</em></div>
+  <div class="phase"><div class="pn">TASK 0.5</div><strong>יישור לזמן בעברית.</strong> החלק הכי לא ודאי. <em>יישור ברמת מילה, או מסתפקים בשורה?</em></div>
+  <div class="phase"><div class="pn">TASK 0.6</div><strong>אימות המכסות החינמיות.</strong> הרשמה לכל שירות, אימות התנאים, ווידוא שאין דרישת כרטיס אשראי.</div>
+
+  <div class="note"><strong>סדר מומלץ:</strong> 0.1 ← 0.2 ← 0.3 ← 0.4 ← 0.5 ← 0.6. שתי המשימות הראשונות עונות על "האם המוצר הזה שווה משהו" בלי להירשם לשום שירות ובלי לכתוב שורת שרת אחת. אם הן עוברות — כל השאר הוא הנדסה. אם הן נכשלות — חסכת חודש.</div>
+</section>
+
+<!-- ===== 13 ===== -->
+<section id="s13">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 13</div><h2>מרשם ההחלטות המלא</h2></div>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>#</th><th>נושא</th><th>הבחירה</th></tr>
+    <tr><td class="mono">D-01</td><td>מקור שירים</td><td>שניהם — מתחילים מקובץ</td></tr>
+    <tr><td class="mono">D-02</td><td>פרונטאנד</td><td>React / Next.js</td></tr>
+    <tr><td class="mono">D-03</td><td>Backend</td><td>FastAPI</td></tr>
+    <tr><td class="mono">D-04</td><td>תורים</td><td>בוטל ב־D-25</td></tr>
+    <tr><td class="mono">D-05</td><td>מנוע הפרדה</td><td>Demucs</td></tr>
+    <tr><td class="mono">D-06</td><td>ערוצים</td><td>ארבעה</td></tr>
+    <tr><td class="mono">D-07</td><td>מיקום עיבוד</td><td>GPU ללא שרת</td></tr>
+    <tr><td class="mono">D-08</td><td>מקור מילים</td><td>שילוב + עורך ידני</td></tr>
+    <tr><td class="mono">D-09</td><td>רזולוציית סנכרון</td><td>שורה, ומילה כשאפשר</td></tr>
+    <tr><td class="mono">D-10</td><td>סולם וקצב</td><td>בדפדפן, בזמן אמת</td></tr>
+    <tr><td class="mono">D-11</td><td>ספריית DSP</td><td>רישיון מתירן</td></tr>
+    <tr><td class="mono">D-12</td><td>אחסון</td><td>ללא עלות תעבורה</td></tr>
+    <tr><td class="mono">D-13</td><td>פורמט</td><td>דחוס</td></tr>
+    <tr><td class="mono">D-14</td><td>מסירת אודיו</td><td>קובץ מלא</td></tr>
+    <tr><td class="mono">D-15</td><td>בסיס נתונים</td><td>Postgres מנוהל</td></tr>
+    <tr><td class="mono">D-16</td><td>אימות</td><td>ספק מנוהל</td></tr>
+    <tr><td class="mono">D-17</td><td>שיתוף</td><td>מטא־דאטה בלבד</td></tr>
+    <tr><td class="mono">D-18</td><td>התקדמות</td><td>SSE</td></tr>
+    <tr><td class="mono">D-19</td><td>מודל שימוש</td><td>פרטי</td></tr>
+    <tr><td class="mono">D-20</td><td>שפה</td><td>i18n מהיום הראשון</td></tr>
+    <tr><td class="mono">D-21</td><td>הקלטה וניקוד</td><td>לא כרגע</td></tr>
+    <tr><td class="mono">D-22</td><td>מחיקה</td><td>לפי אי־שימוש</td></tr>
+    <tr><td class="mono">D-23</td><td>אירוח</td><td>PaaS חינמי</td></tr>
+    <tr><td class="mono">D-24</td><td>ניטור</td><td>שגיאות + אנליטיקה</td></tr>
+    <tr><td class="mono">D-25</td><td>תורים</td><td>ללא Celery/Redis — הפלטפורמה היא התור</td></tr>
+    <tr><td class="mono">D-26</td><td>כיבוי שרת</td><td>keep-alive</td></tr>
+    <tr><td class="mono">D-27</td><td>תמלול</td><td>API חיצוני חינמי</td></tr>
+    <tr><td class="mono">D-28</td><td>מוכנות מדורגת</td><td>כן — נגן נפתח לפני המילים</td></tr>
+    <tr><td class="mono">D-29</td><td>מקור לתמלול</td><td>תערובת + שירה במקביל, בוחרים את הטוב</td></tr>
+    <tr><td class="mono">D-30</td><td>חריגה ממכסה</td><td>הודעה + הצעה לפנות מקום</td></tr>
+    <tr><td class="mono">D-31</td><td>פרטי/ציבורי</td><td>פרטי, ארכיטקטורה מוכנה לפתיחה</td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ===== 14 ===== -->
+<section id="s14">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">CH 14 — DEPLOY</div><h2>פריסה לענן — צעד אחר צעד</h2></div>
+  <p>הפרק הזה הוא נוהל תפעולי, לא אפיון. הוא רלוונטי בשלב 3 — שלבים 0 עד 2 רצים כולם מקומית. עד אז אין מה לפרוס.</p>
+
+  <h3>סדר ההקמה — והסיבה שהוא לא שרירותי</h3>
+  <p>כל שירות מייצר סוד שהשירות הבא צריך. הקמה בסדר לא נכון תגרור חזרה אחורה שוב ושוב.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>#</th><th>מקימים</th><th>מה מקבלים ממנו</th><th>מי צריך את זה</th></tr>
+    <tr><td>1</td><td>מאגר קוד + הגדרת סודות</td><td>מקום מאובטח לכל המפתחות</td><td>הכל</td></tr>
+    <tr><td>2</td><td>Postgres מנוהל</td><td><span class="mono">DATABASE_URL</span></td><td>ה־API</td></tr>
+    <tr><td>3</td><td>דלי אחסון אובייקטים</td><td>מפתח גישה, סוד, שם דלי, endpoint</td><td>API + פונקציות GPU</td></tr>
+    <tr><td>4</td><td>ספק אימות</td><td>מפתח ציבורי ומפתח סודי</td><td>API + פרונטאנד</td></tr>
+    <tr><td>5</td><td>API התמלול</td><td>מפתח API</td><td>פונקציות GPU</td></tr>
+    <tr><td>6</td><td>פונקציות ה־GPU</td><td>טוקן הפעלה + כתובת הפונקציה</td><td>ה־API</td></tr>
+    <tr><td>7</td><td>שירות ה־API</td><td>כתובת ציבורית</td><td>פרונטאנד + keep-alive</td></tr>
+    <tr><td>8</td><td>פרונטאנד</td><td>הכתובת שהמשתמשים פותחים</td><td>המשתמשים</td></tr>
+    <tr><td>9</td><td>keep-alive</td><td>—</td><td>—</td></tr>
+    <tr><td>10</td><td>ניטור שגיאות ואנליטיקה</td><td>DSN / מפתח פרויקט</td><td>API + פרונטאנד</td></tr>
+  </table>
+  </div>
+
+  <h3>משתני סביבה — הרשימה המלאה</h3>
+  <p>קובץ <code>.env.example</code> נשמר במאגר עם השמות בלבד וללא ערכים. הערכים האמיתיים חיים רק במאגר הסודות של הפלטפורמה.</p>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>משתנה</th><th>איפה</th><th>תפקיד</th></tr>
+    <tr><td><span class="mono">DATABASE_URL</span></td><td>API</td><td>חיבור ל־Postgres, כולל SSL</td></tr>
+    <tr><td><span class="mono">STORAGE_ENDPOINT / KEY / SECRET / BUCKET</span></td><td>API + GPU</td><td>גישה לאחסון וליצירת כתובות חתומות</td></tr>
+    <tr><td><span class="mono">AUTH_SECRET_KEY</span></td><td>API</td><td>אימות טוקנים של המשתמשים</td></tr>
+    <tr><td><span class="mono">AUTH_PUBLIC_KEY</span></td><td>פרונטאנד</td><td>מפתח ציבורי — מותר שייחשף</td></tr>
+    <tr><td><span class="mono">GPU_TOKEN / GPU_APP_NAME</span></td><td>API</td><td>הפעלת הפונקציות המרוחקות</td></tr>
+    <tr><td><span class="mono">ASR_API_KEY</span></td><td>GPU</td><td>שירות התמלול</td></tr>
+    <tr><td><span class="mono">ALLOWED_ORIGINS</span></td><td>API</td><td>CORS — כתובת הפרונטאנד בלבד, לא כוכבית</td></tr>
+    <tr><td><span class="mono">NEXT_PUBLIC_API_URL</span></td><td>פרונטאנד</td><td>נצרב בזמן בנייה — שינוי מחייב בנייה מחדש</td></tr>
+    <tr><td><span class="mono">SENTRY_DSN</span></td><td>API + פרונטאנד</td><td>דיווח שגיאות</td></tr>
+    <tr><td><span class="mono">ENV</span></td><td>הכל</td><td><span class="mono">local</span> / <span class="mono">production</span></td></tr>
+  </table>
+  </div>
+
+  <div class="warn"><strong>שלוש טעויות שגובות ערב שלם:</strong>
+    <ul style="margin:8px 0 0">
+      <li><strong>CORS על הדלי, לא רק על ה־API.</strong> ההעלאה נעשית ישירות מהדפדפן לאחסון — הדלי עצמו חייב להתיר את כתובת הפרונטאנד. זו התקלה הראשונה שתפגשי.</li>
+      <li><strong>משתנים של הפרונטאנד נצרבים בבנייה.</strong> שינוי כתובת ה־API דורש בנייה מחדש, לא רק הפעלה מחדש.</li>
+      <li><strong>הפורט מגיע מהפלטפורמה.</strong> השרת חייב להאזין ל־<span class="mono">$PORT</span> מהסביבה ולא לפורט קבוע, אחרת הפריסה תיכשל בלי הסבר ברור.</li>
+    </ul>
+  </div>
+
+  <h3>פריסת ה־API</h3>
+  <ul>
+    <li><strong>Dockerfile</strong> — בסיס Python רזה, התקנת תלויות בשכבה נפרדת מהקוד (בנייה מהירה יותר), הרצה עם Uvicorn.</li>
+    <li><strong>בדיקת בריאות</strong> — <code>/system/health</code>. חייבת להיות זולה: בלי פנייה ל־DB, בלי פנייה לאחסון. היא נקראת מאות פעמים ביום.</li>
+    <li><strong>מיגרציות כשלב נפרד</strong> שרץ לפני העלאת הקוד החדש, לא בתוך הקוד עצמו.</li>
+    <li><strong>שירות אחד בלבד.</strong> מכסת השעות החינמית מספיקה בדיוק לאחד שרץ ברציפות — לא לשניים.</li>
+  </ul>
+
+  <h3>פריסת פונקציות ה־GPU</h3>
+  <ul>
+    <li><strong>מחזור חיים נפרד מה־API.</strong> הן נפרסות בפקודה משלהן ומתעדכנות בנפרד — שינוי בממשק לא מחייב פריסה מחדש של המודל.</li>
+    <li><strong>משקלי המודל נשמרים בנפח קבוע אצל הספק</strong> ולא מורדים בכל ריצה. זה ההבדל בין התעוררות של שניות לבין התעוררות של דקה, וזה מה שמחזיק את תקציב הזמן של CH 04.</li>
+    <li><strong>גרסאות</strong> — לתייג את גרסת המודל בכל תוצר. ביום שתחליפי מודל, תרצי לדעת אילו שירים עובדו בישן.</li>
+    <li><strong>הפונקציה כותבת ישירות לאחסון</strong> ולא מחזירה אודיו דרך ה־API. ה־API החינמי חלש מכדי להעביר קבצים.</li>
+  </ul>
+
+  <h3>מיגרציות בסיס נתונים — הכלל היחיד שחשוב</h3>
+  <p>בפריסה יש רגע שבו הקוד הישן והחדש חיים יחד. לכן: <strong>הרחבה ואז כיווץ.</strong> קודם מוסיפים עמודה ומתחילים לכתוב אליה, ורק בפריסה הבאה מוחקים את הישנה. לעולם לא מחיקה או שינוי שם באותה פריסה שמכניסה את הקוד שמשתמש בהם.</p>
+
+  <h3>keep-alive</h3>
+  <ul>
+    <li>שירות cron חיצוני חינמי שפונה ל־<code>/system/health</code> כל 10 דקות.</li>
+    <li><strong>לא</strong> להריץ את זה מתוך השירות עצמו — שירות ישן לא מעיר את עצמו.</li>
+    <li>לוודא שמכסת השעות מספיקה לחודש שלם לפני שסומכים על זה.</li>
+  </ul>
+
+  <h3>בדיקת עשן אחרי כל פריסה</h3>
+  <p>שש בדיקות, שתי דקות. אם אחת נופלת — חוזרים אחורה ולא מתקנים קדימה.</p>
+  <ol>
+    <li>נקודת הבריאות עונה.</li>
+    <li>התחברות עובדת ומחזירה טוקן תקין.</li>
+    <li>העלאת קובץ מהדפדפן ישירות לאחסון מצליחה — זו הבדיקה שתופסת בעיות CORS.</li>
+    <li>יצירת עבודה מחזירה מזהה, וזרם ההתקדמות מתחיל לזוז.</li>
+    <li>שיר קצר שכבר עובד נפתח בנגן ומנגן.</li>
+    <li>שגיאה מכוונת מופיעה בכלי הניטור.</li>
+  </ol>
+
+  <h3>חזרה לאחור</h3>
+  <ul>
+    <li><strong>קוד</strong> — פריסה מחדש של התמונה הקודמת. לכן מתייגים כל תמונה בגרסה ולא רק ב־<span class="mono">latest</span>.</li>
+    <li><strong>בסיס נתונים</strong> — כלל ההרחבה־ואז־כיווץ הוא מה שהופך חזרה לאחור לאפשרית בכלל.</li>
+    <li><strong>פונקציות GPU</strong> — גרסה קודמת נשארת פרוסה עד שהחדשה מוכחת.</li>
+  </ul>
+
+  <h3>יום הפריסה — רשימת תיוג</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>✓</th><th>פריט</th></tr>
+    <tr><td></td><td>אין כרטיס אשראי באף שירות, ותקרות הוצאה מוגדרות היכן שאפשר</td></tr>
+    <tr><td></td><td>אף סוד לא נמצא במאגר הקוד — נבדק בהיסטוריה, לא רק בקוד הנוכחי</td></tr>
+    <tr><td></td><td><span class="mono">.env.example</span> מעודכן ומכיל את כל השמות</td></tr>
+    <tr><td></td><td>CORS מוגדר גם על ה־API וגם על דלי האחסון</td></tr>
+    <tr><td></td><td>כתובות האחסון חתומות ובעלות תפוגה — אין קבצים ציבוריים</td></tr>
+    <tr><td></td><td>המיגרציות רצו והצליחו</td></tr>
+    <tr><td></td><td>keep-alive פעיל ומאומת</td></tr>
+    <tr><td></td><td>ניטור שגיאות מחובר ונבדק בשגיאה מכוונת</td></tr>
+    <tr><td></td><td>מכסות המשתמש פעילות — נבדק בניסיון חריגה</td></tr>
+    <tr><td></td><td>מדיניות המחיקה מתוזמנת ורצה בהצלחה בהרצה יבשה</td></tr>
+    <tr><td></td><td>בדיקת העשן עברה במלואה</td></tr>
+    <tr><td></td><td>נבדק על טלפון אמיתי, לא רק בסימולציה בדפדפן</td></tr>
+  </table>
+  </div>
+
+  <div class="note"><strong>מתי לפרוס בפעם הראשונה:</strong> מוקדם ככל האפשר בשלב 3, עם מערכת שעושה מעט מאוד. פריסה ראשונה תמיד שוברת דברים שעובדים מצוין מקומית — עדיף לגלות את זה כשיש חמש נקודות קצה ולא חמישים.</div>
+</section>
+
+<footer>
+  <p><strong>אפיון מערכת — נגן קריוקי</strong> · גרסה 1.2 · סופית<br>
+  31 החלטות סגורות · אפס החלטות פתוחות · השלב הבא: משימה 0.1<br>
+  נתוני מסלולים חינמיים נכונים לאוגוסט 2026 ודורשים אימות במשימה 0.6.</p>
+</footer>
+
+</div>
+</body>
+</html>

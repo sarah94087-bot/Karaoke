@@ -1,0 +1,15 @@
+[req]
+distinguished_name = dn
+x509_extensions = v3_req
+prompt = no
+[dn]
+CN = karuki-dev
+[v3_req]
+subjectAltName = @alt_names
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+[alt_names]
+IP.1 = 192.168.150.100
+DNS.1 = localhost
+IP.2 = 127.0.0.1

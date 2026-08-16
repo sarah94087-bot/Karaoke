@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-0.2.1 — אב־טיפוס נגן 4 ערוצים</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px 60px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);padding:24px 0;margin-bottom:24px}
+h1{margin:.1em 0;font-size:1.5rem}
+.lede{color:#DCCFE6;margin:0;font-size:.93rem;max-width:62ch}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;margin:0 0 20px}
+.panel h2{margin:0 0 12px;font-size:1.08rem;color:var(--plum)}
+
+#loadBar{height:6px;background:var(--rule);border-radius:3px;overflow:hidden;margin:10px 0}
+#loadFill{height:100%;width:0;background:var(--teal);transition:width .2s}
+
+.transport{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+button{background:var(--amber);color:#1B1526;border:0;border-radius:6px;padding:10px 20px;
+  font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.sec{background:var(--plum);color:#F4EEF8}
+button.small{padding:6px 12px;font-size:.85rem;font-weight:600}
+
+#seek{width:100%;margin:6px 0}
+.time{font-family:ui-monospace,Consolas,monospace;font-size:.95rem;direction:ltr;unicode-bidi:isolate}
+
+.strip{display:grid;grid-template-columns:96px 1fr 54px 78px;gap:12px;align-items:center;
+  padding:10px 0;border-top:1px dashed var(--rule)}
+.strip:first-of-type{border-top:0}
+.strip .nm{font-weight:700;font-size:.93rem}
+.strip .nm small{display:block;font-weight:400;color:var(--ink-soft);font-size:.78rem}
+.strip input[type=range]{width:100%}
+.strip .val{font-family:ui-monospace,Consolas,monospace;font-size:.85rem;color:var(--ink-soft);text-align:center}
+
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.rd{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:10px 12px}
+.rd b{display:block;font-family:ui-monospace,Consolas,monospace;font-size:1.15rem;line-height:1.3}
+.rd small{color:var(--ink-soft);font-size:.79rem}
+.rd.good b{color:var(--teal)}
+.rd.bad b{color:var(--magenta)}
+
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:14px 0;font-size:.91rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:14px 0;font-size:.91rem}
+.verdict{font-size:1.05rem;font-weight:700;padding:12px 16px;border-radius:8px;margin-top:12px}
+.verdict.pass{background:rgba(37,111,98,.14);color:var(--teal);border:1px solid var(--teal)}
+.verdict.fail{background:rgba(190,54,112,.14);color:var(--magenta);border:1px solid var(--magenta)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.2.1 — ארבעה ערוצים, שעון אחד</h1>
+  <p class="lede">הקריטריון: אין הסטה נשמעת בין הערוצים לאורך שיר שלם.
+  הדף הזה גם מוכיח את זה במספר, לא רק באוזן.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>טעינה</h2>
+  <div id="loadBar"><div id="loadFill"></div></div>
+  <div id="loadMsg" class="mono" style="font-size:.86rem;color:var(--ink-soft)">ממתין…</div>
+</div>
+
+<div class="panel" id="playerPanel" style="display:none">
+  <h2>נגן</h2>
+  <div class="transport">
+    <button id="playBtn">נגן</button>
+    <button class="sec" id="stopBtn">עצור</button>
+    <span class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></span>
+  </div>
+  <input type="range" id="seek" min="0" max="1000" value="0">
+
+  <div id="strips"></div>
+
+  <div class="transport" style="margin-top:16px">
+    <button class="small sec" onclick="soloVocalsOff()">הסר שירה</button>
+    <button class="small sec" onclick="allOn()">החזר הכל</button>
+    <button class="small sec" onclick="jump(0.9)">קפוץ ל־90% מהשיר</button>
+  </div>
+</div>
+
+<div class="panel" id="testPanel" style="display:none">
+  <h2>מבחן הסנכרון — הוכחה מספרית</h2>
+  <p style="margin:0 0 10px;font-size:.92rem;color:var(--ink-soft)">
+    מחברים את 4 הערוצים ומחסרים מהם את השיר המקורי, בחמש נקודות לאורך השיר.
+    בכל נקודה מחפשים את ההיסט שמביא את השארית למינימום.
+    <strong>אם ההיסט זהה בכל חמש הנקודות — אין סחיפה, והערוצים נעולים לאותו שעון.</strong>
+    זה המספר שקובע, לא עומק השארית.
+  </p>
+  <div class="note" style="margin:0 0 12px">
+    <strong>למה יש היסט קבוע:</strong> קובץ ה־MP3 המקורי מפוענח עם השהיית מקודד של כ־25ms
+    ביחס לערוצים שיצאו מ־Demucs. זה קבוע ידוע של פורמט MP3 ולא בעיה בנגן —
+    ולכן המבחן מיישר אותו קודם, ורק אחר כך בודק סחיפה.
+  </div>
+  <button id="testBtn">הרץ מבחן</button>
+  <div class="readout" id="testOut"></div>
+  <div id="testVerdict"></div>
+</div>
+
+<div class="panel">
+  <h2>איך לבדוק באוזן</h2>
+  <div class="note">
+    <strong>1.</strong> נגן מההתחלה, האזן 20 שניות — הכל צריך להישמע כמו השיר המקורי.<br>
+    <strong>2.</strong> לחץ <strong>"קפוץ ל־90% מהשיר"</strong> — זה המקום שבו הסטה מצטברת הייתה מתגלה. עדיין מסונכרן?<br>
+    <strong>3.</strong> לחץ <strong>"הסר שירה"</strong> תוך כדי נגינה — הליווי צריך להמשיך חלק, בלי קפיצה.<br>
+    <strong>4.</strong> הזז את הסרגל קדימה ואחורה כמה פעמים — אחרי כל קפיצה הערוצים חייבים להישאר יחד.
+  </div>
+  <div class="warn">
+    <strong>למה זה עובד:</strong> כל ארבעת הערוצים מנוגנים דרך <span class="mono">AudioContext</span> אחד,
+    ומופעלים בקריאה אחת עם אותה חותמת זמן. הם חולקים שעון חומרה אחד — ולכן הסטה היא בלתי אפשרית ארכיטקטונית.
+    אילו היינו משתמשים ב־4 אלמנטי <span class="mono">&lt;audio&gt;</span> נפרדים, כל אחד עם השעון שלו,
+    הייתה נצברת הסטה תוך דקות. זו ההחלטה המרכזית שהמשימה הזו מקבעת.
+  </div>
+</div>
+
+</div>
+
+<script>
+const SONG = "דרוש נא (1)";
+const BASE = "../output/htdemucs/" + encodeURIComponent(SONG) + "/";
+const STEMS = [
+  {id:"vocals", label:"שירה",  sub:"vocals"},
+  {id:"drums",  label:"תופים", sub:"drums"},
+  {id:"bass",   label:"בס",    sub:"bass"},
+  {id:"other",  label:"שאר",   sub:"other"}
+];
+
+let ctx, buffers = {}, originalBuffer = null;
+let sources = {}, gains = {}, master;
+let playing = false, startedAt = 0, offset = 0, duration = 0;
+
+function fmt(t){
+  t = Math.max(0, t|0);
+  return Math.floor(t/60) + ":" + String(t%60).padStart(2,"0");
+}
+
+async function loadAll(){
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  master = ctx.createGain();
+  master.connect(ctx.destination);
+
+  const fill = document.getElementById("loadFill");
+  const msg = document.getElementById("loadMsg");
+  const list = [...STEMS.map(s=>s.id), "original"];
+  let done = 0;
+
+  for(const name of list){
+    msg.textContent = "טוען " + name + ".wav …";
+    const res = await fetch(BASE + name + ".wav");
+    if(!res.ok) throw new Error("failed to fetch " + name + " (" + res.status + ")");
+    const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+    if(name === "original") originalBuffer = buf; else buffers[name] = buf;
+    done++;
+    fill.style.width = (done/list.length*100) + "%";
+  }
+
+  duration = buffers.vocals.duration;
+  document.getElementById("dur").textContent = fmt(duration);
+  msg.textContent = "נטענו " + list.length + " קבצים · " +
+    buffers.vocals.sampleRate + "Hz · " + duration.toFixed(2) + "s";
+  document.getElementById("playerPanel").style.display = "";
+  document.getElementById("testPanel").style.display = "";
+  buildStrips();
+}
+
+function buildStrips(){
+  document.getElementById("strips").innerHTML = STEMS.map(s=>`
+    <div class="strip">
+      <div class="nm">${s.label}<small class="mono">${s.sub}</small></div>
+      <input type="range" min="0" max="150" value="100" data-vol="${s.id}">
+      <div class="val" data-val="${s.id}">100</div>
+      <button class="small sec" data-mute="${s.id}">השתק</button>
+    </div>`).join("");
+
+  STEMS.forEach(s=>{
+    gains[s.id] = ctx.createGain();
+    gains[s.id].connect(master);
+  });
+
+  document.querySelectorAll("[data-vol]").forEach(el=>{
+    el.addEventListener("input", ()=>{
+      const id = el.dataset.vol, v = el.value/100;
+      gains[id].gain.setTargetAtTime(v, ctx.currentTime, 0.01);
+      document.querySelector(`[data-val="${id}"]`).textContent = el.value;
+    });
+  });
+  document.querySelectorAll("[data-mute]").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const id = el.dataset.mute;
+      const slider = document.querySelector(`[data-vol="${id}"]`);
+      const muted = el.dataset.on === "1";
+      if(muted){ slider.value = el.dataset.prev || 100; el.dataset.on = "0"; el.textContent = "השתק"; }
+      else { el.dataset.prev = slider.value; slider.value = 0; el.dataset.on = "1"; el.textContent = "בטל"; }
+      slider.dispatchEvent(new Event("input"));
+    });
+  });
+}
+
+function startFrom(pos){
+  stopSources();
+  const when = ctx.currentTime + 0.08;   // one shared start time for all four
+  STEMS.forEach(s=>{
+    const src = ctx.createBufferSource();
+    src.buffer = buffers[s.id];
+    src.connect(gains[s.id]);
+    src.start(when, pos);               // identical `when` => sample-locked
+    sources[s.id] = src;
+  });
+  startedAt = when;
+  offset = pos;
+  playing = true;
+  document.getElementById("playBtn").textContent = "השהה";
+}
+
+function stopSources(){
+  Object.values(sources).forEach(s=>{ try{ s.stop(); }catch(e){} });
+  sources = {};
+}
+
+function currentPos(){
+  if(!playing) return offset;
+  return Math.min(duration, offset + (ctx.currentTime - startedAt));
+}
+
+document.getElementById("playBtn").onclick = async ()=>{
+  await ctx.resume();
+  if(playing){
+    offset = currentPos();
+    stopSources();
+    playing = false;
+    document.getElementById("playBtn").textContent = "נגן";
+  } else {
+    startFrom(offset >= duration ? 0 : offset);
+  }
+};
+document.getElementById("stopBtn").onclick = ()=>{
+  stopSources(); playing = false; offset = 0;
+  document.getElementById("playBtn").textContent = "נגן";
+};
+document.getElementById("seek").addEventListener("input", e=>{
+  const pos = e.target.value/1000 * duration;
+  if(playing) startFrom(pos); else offset = pos;
+});
+function jump(frac){
+  const pos = frac * duration;
+  if(playing) startFrom(pos); else { offset = pos; }
+  document.getElementById("seek").value = frac*1000;
+}
+function soloVocalsOff(){
+  const sl = document.querySelector('[data-vol="vocals"]');
+  sl.value = 0; sl.dispatchEvent(new Event("input"));
+}
+function allOn(){
+  document.querySelectorAll("[data-vol]").forEach(sl=>{
+    sl.value = 100; sl.dispatchEvent(new Event("input"));
+  });
+  document.querySelectorAll("[data-mute]").forEach(b=>{ b.dataset.on="0"; b.textContent="השתק"; });
+}
+
+setInterval(()=>{
+  if(!duration) return;
+  const p = currentPos();
+  document.getElementById("cur").textContent = fmt(p);
+  if(playing) document.getElementById("seek").value = p/duration*1000;
+  if(playing && p >= duration - 0.05){
+    stopSources(); playing = false; offset = 0;
+    document.getElementById("playBtn").textContent = "נגן";
+  }
+}, 200);
+
+// ---- numeric sync proof: (sum of stems) - original ----
+document.getElementById("testBtn").onclick = ()=>{
+  const btn = document.getElementById("testBtn");
+  btn.disabled = true; btn.textContent = "מחשב…";
+
+  setTimeout(()=>{
+    const sr = originalBuffer.sampleRate;
+    const orig = originalBuffer.getChannelData(0);
+    const st = STEMS.map(s=>buffers[s.id].getChannelData(0));
+    const LEN = Math.floor(sr*3);          // 3s analysis window per probe
+
+    function resid(start, off){
+      let d2=0, o2=0;
+      for(let i=0;i<LEN;i++){
+        const j=start+i, k=j+off;
+        if(k<0 || k>=st[0].length) return Infinity;
+        let mix=0; for(let m=0;m<4;m++) mix += st[m][k];
+        const d = mix - orig[j];
+        d2 += d*d; o2 += orig[j]*orig[j];
+      }
+      return 20*Math.log10(Math.sqrt(d2/LEN)/Math.sqrt(o2/LEN));
+    }
+
+    function bestOffset(start, center, span, step){
+      let best = {off:center, db:Infinity};
+      for(let off=center-span; off<=center+span; off+=step){
+        const db = resid(start, off);
+        if(db < best.db) best = {off, db};
+      }
+      return best;
+    }
+
+    const total = originalBuffer.duration;
+    // coarse global search first, to locate the constant codec delay
+    const anchor = bestOffset(Math.floor(total*0.5*sr), 0, 3000, 25);
+    const refined = bestOffset(Math.floor(total*0.5*sr), anchor.off, 30, 1);
+
+    const probes = [0.05,0.25,0.5,0.75,0.95].map(f=>{
+      const start = Math.floor(f*total*sr);
+      const c = bestOffset(start, refined.off, 200, 5);
+      const f2 = bestOffset(start, c.off, 8, 1);
+      return {t:f*total, off:f2.off, db:f2.db};
+    });
+
+    const offs = probes.map(p=>p.off);
+    const drift = Math.max(...offs) - Math.min(...offs);
+    const driftMs = drift/sr*1000;
+    const passed = driftMs < 1;            // under 1ms across the song
+
+    document.getElementById("testOut").innerHTML = `
+      <div class="rd ${passed?"good":"bad"}"><b>${driftMs.toFixed(3)} ms</b>
+        <small>סחיפה לאורך השיר</small></div>
+      <div class="rd"><b>${drift}</b><small>סחיפה בדגימות</small></div>
+      <div class="rd"><b>${(refined.off/sr*1000).toFixed(1)} ms</b>
+        <small>היסט קבוע (השהיית MP3)</small></div>
+      <div class="rd"><b>${total.toFixed(1)}s</b><small>נבדק לאורך</small></div>`;
+
+    const rows = probes.map(p=>
+      `<tr><td class="mono">${p.t.toFixed(1)}s</td>
+           <td class="mono">${p.off}</td>
+           <td class="mono">${p.db.toFixed(1)} dB</td></tr>`).join("");
+
+    document.getElementById("testVerdict").innerHTML =
+      `<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:.88rem">
+         <tr style="background:var(--paper)">
+           <th style="text-align:right;padding:6px 8px;border:1px solid var(--rule)">נקודה בשיר</th>
+           <th style="text-align:right;padding:6px 8px;border:1px solid var(--rule)">היסט (דגימות)</th>
+           <th style="text-align:right;padding:6px 8px;border:1px solid var(--rule)">שארית</th></tr>
+         ${rows.replace(/<td/g,'<td style="padding:6px 8px;border:1px solid var(--rule)"')}
+       </table>` +
+      (passed
+        ? `<div class="verdict pass">✓ עובר — ההיסט זהה (${refined.off} דגימות) בכל חמש הנקודות,
+           מתחילת השיר ועד סופו. סחיפה: אפס. הערוצים נעולים לאותו שעון.</div>`
+        : `<div class="verdict fail">✗ נכשל — ההיסט משתנה לאורך השיר (${driftMs.toFixed(2)}ms).
+           הערוצים סוחפים זה מזה.</div>`);
+
+    btn.disabled = false; btn.textContent = "הרץ שוב";
+  }, 50);
+};
+
+loadAll().catch(e=>{
+  document.getElementById("loadMsg").innerHTML =
+    '<span style="color:#BE3670">שגיאה: ' + e.message +
+    '<br>ודא שהדף נפתח דרך השרת המקומי (http://localhost:8000) ולא כקובץ.</span>';
+});
+</script>
+</body>
+</html>

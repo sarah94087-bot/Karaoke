@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>נגן קריוקי — פירוק למשימות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Suez+One&family=Assistant:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EFECF4;--paper-2:#E5E0EE;--card:#FBFAFD;
+  --ink:#1B1526;--ink-soft:#4A4159;--plum:#4B2A5E;
+  --amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);--rule-strong:rgba(27,21,38,.28);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;
+  font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 120px}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--magenta);direction:ltr;unicode-bidi:isolate}
+
+header.top{background:var(--plum);color:#F4EEF8;border-bottom:6px solid var(--amber);
+  padding:44px 0 34px;margin-bottom:48px}
+.kicker{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--amber);direction:ltr;unicode-bidi:isolate}
+h1{font-family:"Suez One",Georgia,serif;font-size:clamp(2rem,5vw,3.2rem);
+  line-height:1.05;margin:.25em 0 .2em;font-weight:400}
+.lede{max-width:60ch;color:#DCCFE6;font-size:1.03rem;margin:0}
+
+.counts{display:flex;flex-wrap:wrap;gap:10px;margin:24px 0 0}
+.cnt{background:rgba(0,0,0,.22);border:1px solid rgba(244,238,248,.16);
+  border-radius:8px;padding:10px 16px;flex:1 1 130px}
+.cnt b{display:block;font-family:"Suez One",Georgia,serif;font-size:1.5rem;line-height:1.1}
+.cnt small{color:rgba(244,238,248,.65);font-size:.8rem}
+
+section{margin:0 0 56px;scroll-margin-top:20px}
+.sec-head{border-top:2px solid var(--ink);padding-top:10px;margin-bottom:16px}
+.sec-head .bar{height:5px;width:64px;margin-bottom:14px;background:var(--amber)}
+.sec-head.p0 .bar{background:var(--magenta)}
+.sec-head.p1 .bar{background:var(--amber)}
+.sec-head.p2 .bar{background:var(--teal)}
+.sec-head.p3 .bar{background:var(--plum)}
+h2{font-family:"Suez One",Georgia,serif;font-weight:400;font-size:1.6rem;margin:.1em 0;line-height:1.25}
+h3{font-size:1.05rem;font-weight:700;margin:26px 0 8px;color:var(--plum)}
+p{margin:0 0 14px}
+.goal{color:var(--ink-soft);font-size:.95rem;margin:0 0 16px;max-width:70ch}
+
+.tbl-scroll{overflow-x:auto;margin:0 0 18px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--card)}
+th,td{border:1px solid var(--rule);padding:7px 9px;text-align:right;vertical-align:top}
+th{background:var(--paper-2);font-weight:700;font-size:.82rem}
+td.id{font-family:"IBM Plex Mono",monospace;font-size:.78rem;white-space:nowrap;
+  direction:ltr;unicode-bidi:isolate;color:var(--plum);font-weight:600}
+td.dep{font-family:"IBM Plex Mono",monospace;font-size:.75rem;color:var(--ink-soft);
+  direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+.sz{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:.68rem;
+  padding:1px 6px;border-radius:3px;color:#fff}
+.sz.s{background:var(--teal)}
+.sz.m{background:var(--amber)}
+.sz.l{background:var(--magenta)}
+.done{font-size:.86rem;color:var(--ink-soft)}
+
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.07);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0;font-size:.94rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.07);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:16px 0;font-size:.94rem}
+.legend{background:var(--card);border:1px solid var(--rule);border-radius:8px;
+  padding:14px 18px;margin:0 0 40px;font-size:.9rem}
+footer{border-top:2px solid var(--ink);padding-top:18px;color:var(--ink-soft);font-size:.88rem}
+@media (max-width:720px){body{font-size:16px}table{font-size:.84rem}}
+@media print{header.top{background:#fff;color:#000}body{background:#fff}section{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="kicker">TASK BREAKDOWN &nbsp;/&nbsp; DERIVED FROM SPEC v1.2</div>
+    <h1>נגן קריוקי<br>פירוק למשימות</h1>
+    <p class="lede">כל שלב באפיון, מפורק למשימות בגודל של חצי יום עד יומיים. לכל משימה יש קריטריון סיום חד־משמעי — כדי שלא יהיו משימות שנגררות שבועיים בלי לדעת אם הן נגמרו.</p>
+    <div class="counts">
+      <div class="cnt"><b>62</b><small>משימות בסך הכל</small></div>
+      <div class="cnt"><b>18</b><small>שלב 0 — הוכחה</small></div>
+      <div class="cnt"><b>16</b><small>שלב 1 — ליבה</small></div>
+      <div class="cnt"><b>10</b><small>שלב 2 — מילים</small></div>
+      <div class="cnt"><b>18</b><small>שלבים 3–5</small></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<div class="legend">
+  <strong>גדלים:</strong>
+  <span class="sz s">S</span> עד חצי יום &nbsp;·&nbsp;
+  <span class="sz m">M</span> יום עד יומיים &nbsp;·&nbsp;
+  <span class="sz l">L</span> יומיים ומעלה — מועמדת לפירוק נוסף כשמגיעים אליה.
+  <br><br>
+  <strong>העמודה "מוכן כאשר"</strong> היא הדבר החשוב בטבלה. משימה בלי קריטריון סיום היא משימה שלא נגמרת.
+  <br>
+  <strong>העמודה "תלוי"</strong> היא רק תלות קשיחה — משימות בלי תלות אפשר לעשות בכל סדר.
+</div>
+
+<!-- ============ PHASE 0 ============ -->
+<section id="p0">
+  <div class="sec-head p0"><div class="bar"></div><div class="eyebrow">PHASE 0</div><h2>הוכחה — 18 משימות</h2></div>
+  <p class="goal">המטרה: לענות על ארבע שאלות שאם התשובה לאחת מהן שלילית, כדאי לשנות כיוון. אף שורת קוד של המוצר לא נכתבת כאן. משימות 0.1 עד 0.2 לא דורשות הרשמה לשום שירות.</p>
+
+  <h3>0.1 — איכות ההפרדה</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.1.1</td><td>התקנת סביבה והרצת הסקריפט על שיר אחד</td><td class="done">נוצרו 4 ערוצים + <span class="mono">no_vocals.wav</span> לשיר אחד</td><td class="dep">—</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.1.2</td><td>הרצה על 5–10 שירים ממגוון ז'אנרים</td><td class="done">יש פלט לכל השירים ו־<span class="mono">report_timing.csv</span> מלא</td><td class="dep">0.1.1</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.1.3</td><td>האזנה ומילוי טופס הניקוד</td><td class="done">כל השורות בטופס מלאות + מסקנה כתובה</td><td class="dep">0.1.2</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.1.4</td><td>אם התוצאה גבולית — השוואה למודל חלופי</td><td class="done">טבלת השוואה בין שני מודלים על אותם 3 שירים</td><td class="dep">0.1.3</td><td><span class="sz m">M</span></td></tr>
+  </table>
+  </div>
+
+  <h3>0.2 — אודיו בדפדפן</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.2.1</td><td>דף HTML יחיד שטוען 4 ערוצים ומנגן אותם יחד</td><td class="done">אין הסטה נשמעת בין הערוצים לאורך שיר שלם</td><td class="dep">0.1.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-0.2.2</td><td>ווליום והשתקה לכל ערוץ</td><td class="done">אפשר להשתיק את השירה ולהמשיך לנגן חלק</td><td class="dep">0.2.1</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.2.3</td><td>שינוי סולם בזמן אמת</td><td class="done">מעבר בין −6 ל־+6 חצאי טונים בלי הפסקת נגינה ובלי עיוות צורם</td><td class="dep">0.2.1</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-0.2.4</td><td>שינוי קצב בזמן אמת</td><td class="done">50%–150% בלי שינוי גובה הצליל, והערוצים נשארים מסונכרנים</td><td class="dep">0.2.3</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-0.2.5</td><td>בדיקה על טלפון אמיתי</td><td class="done">מדידה מתועדת: האם 4 ערוצים + סולם עומדים בזה, ומאיזה מספר ערוצים זה נשבר</td><td class="dep">0.2.4</td><td><span class="sz s">S</span></td></tr>
+  </table>
+  </div>
+
+  <div class="warn"><strong>T-0.2.3 היא המשימה הכי מסוכנת בשלב 0.</strong> שינוי סולם איכותי בזמן אמת בדפדפן הוא החלק הכי לא ודאי טכנית בכל הפרויקט. אם היא נכשלת — <span class="mono">D-10</span> נפתחת מחדש ועוברים לעיבוד מראש בשרת, וזה משנה ארכיטקטורה. שווה להגיע אליה מוקדם ולא מאוחר.</div>
+
+  <h3>0.3 — GPU מרוחק</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.3.1</td><td>הרשמה לספק GPU ופריסת פונקציה ריקה</td><td class="done">פונקציה מרוחקת מחזירה תשובה, בלי כרטיס אשראי</td><td class="dep">—</td><td class="dep"><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.3.2</td><td>העברת ההפרדה לפונקציה המרוחקת</td><td class="done">קובץ נכנס, ערוצים חוזרים, זהים לתוצאה המקומית</td><td class="dep">0.3.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-0.3.3</td><td>שמירת משקלי המודל בנפח קבוע</td><td class="done">התעוררות שנייה ואילך מתחת ל־15 שניות</td><td class="dep">0.3.2</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-0.3.4</td><td>מדידת 5 ריצות ותיעוד</td><td class="done">טבלה עם זמן התעוררות + זמן עיבוד + שניות GPU שנצרכו</td><td class="dep">0.3.3</td><td><span class="sz s">S</span></td></tr>
+  </table>
+  </div>
+
+  <h3>0.4 — תמלול</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.4.1</td><td>תמלול ערוץ השירה של 3 שירים עבריים</td><td class="done">3 תמלילים שמורים כטקסט</td><td class="dep">0.1.2</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.4.2</td><td>תמלול התערובת של אותם שירים והשוואה</td><td class="done">טבלת השוואה: כמה מילים שגויות בכל גישה</td><td class="dep">0.4.1</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.4.3</td><td>הערכת נטל העריכה הידנית</td><td class="done">מספר: כמה דקות עריכה נדרשות לשיר בממוצע</td><td class="dep">0.4.2</td><td><span class="sz s">S</span></td></tr>
+  </table>
+  </div>
+
+  <h3>0.5 — יישור לזמן</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.5.1</td><td>יישור ברמת שורה על שיר אחד</td><td class="done">קובץ מילים מתוזמן שמתנגן נכון מול השיר</td><td class="dep">0.4.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-0.5.2</td><td>ניסיון יישור ברמת מילה בעברית</td><td class="done">תשובה חד־משמעית: עובד / לא עובד / עובד חלקית</td><td class="dep">0.5.1</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-0.5.3</td><td>מדידת סטייה מול תזמון ידני</td><td class="done">מספר בשניות: הסטייה הממוצעת והמקסימלית</td><td class="dep">0.5.2</td><td><span class="sz s">S</span></td></tr>
+  </table>
+  </div>
+
+  <h3>0.6 — אימות מכסות</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-0.6.1</td><td>הרשמה לכל השירותים ותיעוד המכסות בפועל</td><td class="done">טבלה מעודכנת שמחליפה את ההערכות בפרק 3 באפיון</td><td class="dep">—</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-0.6.2</td><td>ווידוא שאין כרטיס אשראי ושתקרות הוצאה מוגדרות</td><td class="done">בדיקה ידנית בכל שירות, מתועדת</td><td class="dep">0.6.1</td><td><span class="sz s">S</span></td></tr>
+  </table>
+  </div>
+
+  <div class="note"><strong>שער יציאה משלב 0:</strong> ממשיכים לשלב 1 רק כש־T-0.1.3 עבר, T-0.2.5 עבר, ו־T-0.5.2 קיבל תשובה כלשהי. שלוש התשובות האלה קובעות אם האפיון תקף כפי שהוא.</div>
+</section>
+
+<!-- ============ PHASE 1 ============ -->
+<section id="p1">
+  <div class="sec-head p1"><div class="bar"></div><div class="eyebrow">PHASE 1</div><h2>ליבה מקומית — 16 משימות</h2></div>
+  <p class="goal">המטרה: מערכת שרצה על המחשב שלך, בלי ענן ובלי חשבונות, שבה אפשר להעלות שיר ולשיר אותו. בסוף השלב הזה יש מוצר — פשוט לא משותף.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-1.1</td><td>מבנה הפרויקט, git, כלי lint ו־format</td><td class="done">תיקיות לפי פרק 10 באפיון, בדיקות רצות בפקודה אחת</td><td class="dep">—</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-1.2</td><td>שלד FastAPI + נקודת בריאות</td><td class="done"><span class="mono">/system/health</span> עונה, תיעוד אוטומטי נטען</td><td class="dep">1.1</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-1.3</td><td>Postgres מקומי ב־Docker Compose</td><td class="done">פקודה אחת מקימה API + DB</td><td class="dep">1.2</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-1.4</td><td>מודלים ומיגרציות: songs, stems, jobs</td><td class="done">מיגרציה רצה ויורדת נקי</td><td class="dep">1.3</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.5</td><td>העלאת קובץ מקומי + נרמול ל־WAV אחיד</td><td class="done">כל פורמט נכנס יוצא כ־WAV 44.1kHz סטריאו</td><td class="dep">1.4</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.6</td><td>עטיפת ההפרדה כשירות פנימי</td><td class="done">קריאה אחת מקבלת קובץ ומחזירה 4 ערוצים</td><td class="dep">1.5</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.7</td><td>מכונת מצבים של עבודה + התקדמות</td><td class="done">מצב העבודה נשמר ב־DB ושורד הפעלה מחדש</td><td class="dep">1.6</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.8</td><td>זרם SSE להתקדמות</td><td class="done">לקוח רואה שלבים משתנים בזמן אמת</td><td class="dep">1.7</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.9</td><td>שלד Next.js + i18n עם RTL כברירת מחדל</td><td class="done">דף ראשון בעברית, מבנה תרגומים קיים</td><td class="dep">1.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.10</td><td>מסך ספרייה</td><td class="done">רשימת שירים עם מצב עיבוד</td><td class="dep">1.9</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.11</td><td>מסך העלאה ומסך התקדמות</td><td class="done">אפשר להעלות שיר ולראות שלבים בעברית</td><td class="dep">1.10, 1.8</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.12</td><td>מנוע הנגן: 4 ערוצים + שעון מרכזי</td><td class="done">הקוד מ־0.2 משולב כרכיב, עם שעון אחד כמקור אמת</td><td class="dep">0.2.4, 1.10</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-1.13</td><td>מיקסר עם כפתור "הסר שירה"</td><td class="done">4 פסים פועלים + קיצור דרך אחד גדול</td><td class="dep">1.12</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-1.14</td><td>פקדי סולם וקצב בממשק</td><td class="done">שינוי מיידי, והערך מוצג למשתמש</td><td class="dep">1.12</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.15</td><td>זיהוי BPM וסולם מקורי</td><td class="done">מוצגים בנגן ונשמרים בשיר</td><td class="dep">1.6</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-1.16</td><td>שמירת הגדרות אישיות לכל שיר</td><td class="done">חוזרים לשיר — הסולם והמיקס נשמרו</td><td class="dep">1.14</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-1.17</td><td>בדיקת מובייל ונפילה ל־2 ערוצים</td><td class="done">הנגן שמיש בטלפון, ונופל אוטומטית כשצריך</td><td class="dep">1.13</td><td><span class="sz m">M</span></td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ============ PHASE 2 ============ -->
+<section id="p2">
+  <div class="sec-head p2"><div class="bar"></div><div class="eyebrow">PHASE 2</div><h2>מילים — 10 משימות</h2></div>
+  <p class="goal">המטרה: מילים שרצות בזמן. זה השלב שיידרש הכי הרבה כיוונון, ולכן העורך הידני נבנה בו כחלק מהליבה ולא כתוספת.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-2.1</td><td>מודל נתונים למילים + נקודות קצה</td><td class="done">שמירה וקריאה של שורות מתוזמנות, כולל גרסאות</td><td class="dep">1.4</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-2.2</td><td>חיפוש במאגר מילים מסונכרנות פתוח</td><td class="done">שיר מוכר מחזיר מילים מוכנות</td><td class="dep">2.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-2.3</td><td>קליינט לשירות התמלול</td><td class="done">קובץ נכנס, טקסט עם חותמות זמן חוזר</td><td class="dep">2.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-2.4</td><td>תמלול כפול ובחירת התוצאה הטובה</td><td class="done">שתי הריצות מתבצעות, והבחירה מתועדת בשדה <span class="mono">source</span></td><td class="dep">2.3</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-2.5</td><td>יישור לזמן</td><td class="done">חותמות זמן לכל שורה, ולמילה כשהביטחון גבוה</td><td class="dep">2.4, 0.5.2</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-2.6</td><td>תצוגת מילים רצות בנגן</td><td class="done">השורה הנוכחית מודגשת בזמן, בסטייה מתחת ל־100ms</td><td class="dep">2.5, 1.12</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-2.7</td><td>כיוונון offset בממשק</td><td class="done">אפשר להזיז את כל המילים ±, והערך נשמר</td><td class="dep">2.6</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-2.8</td><td>עורך מילים — עריכת טקסט</td><td class="done">אפשר לתקן שגיאות כתיב ולשמור גרסה חדשה</td><td class="dep">2.6</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-2.9</td><td>עורך מילים — עריכת תזמונים</td><td class="done">נגינה מכל שורה + כפתור "תפוס זמן" עובדים</td><td class="dep">2.8</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-2.10</td><td>הדבקת מילים מהמשתמש וסנכרון בלבד</td><td class="done">אפשר להדביק טקסט קיים ולתזמן אותו ידנית</td><td class="dep">2.9</td><td><span class="sz m">M</span></td></tr>
+  </table>
+  </div>
+
+  <div class="note"><strong>למה 2.8 ו־2.9 אינן "נחמד שיהיה":</strong> לפי ההערכה באפיון, סנכרון אוטומטי בעברית לא יגיע לרמה שלא דורשת נגיעה. העורך הוא מה שהופך תוצאה בינונית לשיר שאפשר לשיר. אם הוא ידחה לסוף — שלב 2 ירגיש שבור לאורך כל הדרך.</div>
+</section>
+
+<!-- ============ PHASE 3 ============ -->
+<section id="p3">
+  <div class="sec-head p3"><div class="bar"></div><div class="eyebrow">PHASE 3</div><h2>ענן וריבוי משתמשים — 13 משימות</h2></div>
+  <p class="goal">המטרה: להוציא את זה מהמחשב שלך. פרק 14 באפיון הוא הנוהל המפורט; כאן הפירוק למשימות.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-3.1</td><td>אחסון אובייקטים + כתובות חתומות</td><td class="done">קובץ נשמר ונקרא רק דרך כתובת עם תפוגה</td><td class="dep">1.5</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.2</td><td>העלאה ישירה מהדפדפן + CORS על הדלי</td><td class="done">קובץ עולה בלי לעבור דרך ה־API</td><td class="dep">3.1</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.3</td><td>פונקציות GPU בסביבת ייצור</td><td class="done">ההפרדה רצה מרחוק וכותבת ישירות לאחסון</td><td class="dep">0.3.3, 3.1</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-3.4</td><td>מעקב הפעלה מרוחקת + מדידת שניות GPU</td><td class="done">כל עבודה שומרת <span class="mono">remote_call_id</span> ו־<span class="mono">gpu_seconds</span></td><td class="dep">3.3</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.5</td><td>מוכנות מדורגת</td><td class="done">הנגן נפתח כשהערוצים מוכנים, המילים נכנסות אחר כך</td><td class="dep">3.3, 2.6</td><td><span class="sz l">L</span></td></tr>
+    <tr><td class="id">T-3.6</td><td>אימות משתמשים</td><td class="done">הרשמה, כניסה, יציאה, ואיפוס סיסמה עובדים</td><td class="dep">1.9</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.7</td><td>ספרייה לפי משתמש והרשאות</td><td class="done">משתמש לא יכול לגשת לשיר של אחר — נבדק בבדיקה אוטומטית</td><td class="dep">3.6</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.8</td><td>מכסות ומסך מצב מכסה</td><td class="done">חריגה מוצגת בהודעה ברורה עם הצעה לפנות מקום</td><td class="dep">3.7</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.9</td><td>מחיקה אוטומטית לפי אי־שימוש</td><td class="done">משימה מתוזמנת רצה, ונבדקה בהרצה יבשה</td><td class="dep">3.8</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.10</td><td>Dockerfile ופריסה ראשונה</td><td class="done">האתר נגיש מכתובת ציבורית</td><td class="dep">3.2</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-3.11</td><td>keep-alive</td><td class="done">אין התעוררות איטית אחרי שעות של שקט</td><td class="dep">3.10</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-3.12</td><td>ניטור שגיאות ואנליטיקה</td><td class="done">שגיאה מכוונת מופיעה בכלי הניטור</td><td class="dep">3.10</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-3.13</td><td>בדיקת עשן ורשימת התיוג של פרק 14</td><td class="done">כל 12 הפריטים ברשימה מסומנים</td><td class="dep">3.11, 3.12</td><td><span class="sz m">M</span></td></tr>
+  </table>
+  </div>
+
+  <div class="warn"><strong>המלצה על T-3.10:</strong> לפרוס מוקדם, כשהמערכת עושה כמעט כלום — למשל מיד אחרי T-3.2. פריסה ראשונה תמיד שוברת דברים שעבדו מקומית, ועדיף לגלות את זה עם חמש נקודות קצה ולא עם חמישים. הסדר בטבלה הוא לפי תלות, לא לפי המלצה.</div>
+</section>
+
+<!-- ============ PHASE 4-5 ============ -->
+<section id="p4">
+  <div class="sec-head p3"><div class="bar"></div><div class="eyebrow">PHASE 4–5</div><h2>ייבוא וליטוש — 5 משימות</h2></div>
+  <p class="goal">אחרי שהמערכת עומדת. שלב 4 נבנה כמודול מבודד שאפשר לכבות בדגל אחד.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>ID</th><th>משימה</th><th>מוכן כאשר</th><th>תלוי</th><th>גודל</th></tr>
+    <tr><td class="id">T-4.1</td><td>מודול ייבוא מבודד מאחורי דגל</td><td class="done">כיבוי הדגל מסתיר את הפיצ'ר בלי לשבור כלום</td><td class="dep">3.13</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-4.2</td><td>חילוץ שם, אמן ואורך</td><td class="done">שדות מולאו אוטומטית וניתנים לתיקון ידני</td><td class="dep">4.1</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-5.1</td><td>מסך מלא ותור השמעה</td><td class="done">אפשר להריץ ערב שלם בלי לגעת בעכבר</td><td class="dep">3.13</td><td><span class="sz m">M</span></td></tr>
+    <tr><td class="id">T-5.2</td><td>לולאת A–B</td><td class="done">סימון קטע וחזרה עליו בלולאה</td><td class="dep">1.12</td><td><span class="sz s">S</span></td></tr>
+    <tr><td class="id">T-5.3</td><td>הפיכה ל־PWA</td><td class="done">אפשר להתקין למסך הבית ולפתוח מהר</td><td class="dep">3.13</td><td><span class="sz m">M</span></td></tr>
+  </table>
+  </div>
+</section>
+
+<!-- ============ ORDER ============ -->
+<section id="order">
+  <div class="sec-head"><div class="bar"></div><div class="eyebrow">SEQUENCING</div><h2>מאיפה מתחילים</h2></div>
+
+  <p>אם היה לך שבוע אחד בלבד, הייתי מציע את הסדר הזה — הוא עונה על שתי השאלות המסוכנות ביותר לפני שנכתבת שורת קוד אחת של המוצר:</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>סדר</th><th>משימה</th><th>מה זה עונה</th></tr>
+    <tr><td>1</td><td class="id">T-0.1.1 → T-0.1.3</td><td>האם ההפרדה מספיק טובה כדי שיהיה מוצר בכלל</td></tr>
+    <tr><td>2</td><td class="id">T-0.2.1 → T-0.2.5</td><td>האם החוויה אפשרית בדפדפן, כולל בטלפון</td></tr>
+    <tr><td>3</td><td class="id">T-0.4.1 → T-0.4.3</td><td>כמה עבודה ידנית המילים ידרשו</td></tr>
+    <tr><td>4</td><td class="id">T-0.5.1 → T-0.5.3</td><td>האם סנכרון אוטומטי בעברית ריאלי</td></tr>
+    <tr><td>5</td><td class="id">T-0.3.1 → T-0.3.4</td><td>האם עומדים בתקציב הזמן בענן</td></tr>
+    <tr><td>6</td><td class="id">T-0.6.1 → T-0.6.2</td><td>האם ההנחות על העלויות נכונות</td></tr>
+  </table>
+  </div>
+
+  <p>שתי המשימות הראשונות ברשימה — <span class="mono">T-0.1</span> ו־<span class="mono">T-0.2</span> — לא דורשות הרשמה לשום שירות, לא עולות כלום, ולא מייצרות שורת קוד שתצטרכי למחוק. הן גם, לא במקרה, שתי המשימות שהכי מהר יגידו לך אם שווה להמשיך.</p>
+
+  <div class="note"><strong>הערה על גדלים:</strong> ההערכות הן יחסיות ולא הבטחות. שלוש משימות מסומנות <span class="sz l">L</span> ובאמת יידרשו פירוק כשמגיעים אליהן: <span class="mono">T-0.2.3</span> (סולם בזמן אמת), <span class="mono">T-2.5</span> (יישור) ו־<span class="mono">T-2.9</span> (עורך תזמונים). לא פירקתי אותן עכשיו כי הפירוק הנכון יהיה ברור רק אחרי שלב 0.</div>
+</section>
+
+<footer>
+  <p><strong>נגן קריוקי — פירוק למשימות</strong> · נגזר מאפיון v1.2<br>
+  62 משימות · שער יציאה משלב 0: T-0.1.3, T-0.2.5, T-0.5.2<br>
+  המסמך יתעדכן אחרי שלב 0, כשהתשובות ישנו חלק מההנחות.</p>
+</footer>
+
+</div>
+</body>
+</html>

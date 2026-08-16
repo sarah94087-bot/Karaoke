@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-0.2.3 — שינוי סולם בזמן אמת</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:880px;margin:0 auto;padding:0 20px 70px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);padding:24px 0;margin-bottom:24px}
+h1{margin:.1em 0;font-size:1.5rem}
+.lede{color:#DCCFE6;margin:0;font-size:.93rem;max-width:64ch}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:18px 20px;margin:0 0 20px}
+.panel h2{margin:0 0 12px;font-size:1.08rem;color:var(--plum)}
+#loadBar{height:6px;background:var(--rule);border-radius:3px;overflow:hidden;margin:10px 0}
+#loadFill{height:100%;width:0;background:var(--teal);transition:width .2s}
+
+button{background:var(--amber);color:#1B1526;border:0;border-radius:6px;padding:10px 20px;
+  font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.sec{background:var(--plum);color:#F4EEF8}
+button.small{padding:6px 12px;font-size:.85rem;font-weight:600}
+.transport{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.time{font-family:ui-monospace,Consolas,monospace;font-size:.95rem;direction:ltr;unicode-bidi:isolate}
+#seek{width:100%}
+
+.keyrow{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0}
+.keyrow button{flex:1;min-width:46px;padding:12px 4px;background:#fff;border:1px solid var(--rule);
+  color:var(--ink);font-family:ui-monospace,Consolas,monospace;font-weight:600}
+.keyrow button.on{background:var(--plum);color:#fff;border-color:var(--plum)}
+.keyrow button.zero{border-width:2px;border-color:var(--amber)}
+
+.big{font-family:"IBM Plex Mono",ui-monospace,Consolas,monospace;font-size:2.4rem;
+  font-weight:700;text-align:center;color:var(--plum);direction:ltr}
+.big small{display:block;font-size:.8rem;color:var(--ink-soft);font-weight:400;font-family:inherit}
+
+.strip{display:grid;grid-template-columns:92px 1fr 48px;gap:12px;align-items:center;
+  padding:8px 0;border-top:1px dashed var(--rule)}
+.strip:first-of-type{border-top:0}
+.strip .nm{font-weight:700;font-size:.9rem}
+.strip input[type=range]{width:100%}
+.strip .val{font-family:ui-monospace,Consolas,monospace;font-size:.82rem;color:var(--ink-soft);text-align:center}
+
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px}
+.rd{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:10px 12px}
+.rd b{display:block;font-family:ui-monospace,Consolas,monospace;font-size:1.15rem}
+.rd small{color:var(--ink-soft);font-size:.78rem}
+.rd.good b{color:var(--teal)} .rd.bad b{color:var(--magenta)}
+
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:14px 0;font-size:.91rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:12px 16px;border-radius:0 6px 6px 0;margin:14px 0;font-size:.91rem}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin:12px 0}
+th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+th{background:var(--paper)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.2.3 — שינוי סולם בזמן אמת</h1>
+  <p class="lede">הקריטריון: מעבר בין −6 ל־+6 חצאי טונים, בלי הפסקת נגינה ובלי עיוות צורם.
+  זו המשימה שהאפיון מסמן כנקודת הכשל הגדולה של הפרויקט.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>טעינה</h2>
+  <div id="loadBar"><div id="loadFill"></div></div>
+  <div id="loadMsg" class="mono" style="font-size:.86rem;color:var(--ink-soft)">ממתין…</div>
+</div>
+
+<div class="panel" id="main" style="display:none">
+  <h2>נגן</h2>
+  <div class="transport">
+    <button id="playBtn">נגן</button>
+    <button class="sec" id="stopBtn">עצור</button>
+    <span class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></span>
+  </div>
+  <input type="range" id="seek" min="0" max="1000" value="0">
+
+  <div class="big" id="keyDisplay">0<small>חצאי טונים</small></div>
+  <div class="keyrow" id="keys"></div>
+
+  <div class="big" id="tempoDisplay" style="margin-top:18px">100%<small>קצב</small></div>
+  <input type="range" id="tempo" min="50" max="150" step="1" value="100">
+  <div class="keyrow" id="tempoPresets">
+    <button data-tempo="50">50%</button>
+    <button data-tempo="75">75%</button>
+    <button data-tempo="90">90%</button>
+    <button data-tempo="100" class="zero on">100%</button>
+    <button data-tempo="110">110%</button>
+    <button data-tempo="125">125%</button>
+    <button data-tempo="150">150%</button>
+  </div>
+
+  <div id="strips"></div>
+
+  <div class="transport" style="margin-top:14px">
+    <button class="small sec" onclick="setKey(0)">חזרה ל־0</button>
+    <button class="small sec" id="sweepBtn">סריקה אוטומטית −6→+6</button>
+    <button class="small sec" onclick="vocalsOff()">הסר שירה</button>
+  </div>
+
+  <div class="readout" id="meters"></div>
+</div>
+
+<div class="panel" id="testPanel" style="display:none">
+  <h2>מבחן אובייקטיבי — האם הסולם באמת זז?</h2>
+  <p style="margin:0 0 10px;font-size:.92rem;color:var(--ink-soft)">
+    מזריקים גל סינוס נקי ב־440Hz דרך אותו מנוע, ומודדים את התדר שיוצא.
+    אם המנוע תקין, כל חצי טון צריך להכפיל את התדר ב־<span class="mono">2^(1/12)</span> — ובלי לשנות את משך הקטע.
+  </p>
+  <button id="testBtn">מבחן סולם</button>
+  <button id="tempoTestBtn" class="sec">מבחן קצב</button>
+  <div id="testOut"></div>
+  <div id="tempoTestOut"></div>
+</div>
+
+<div class="panel" id="benchPanel" style="display:none">
+  <h2>מדידת עומס — האם המכשיר הזה עומד בזה?</h2>
+  <p style="margin:0 0 10px;font-size:.92rem;color:var(--ink-soft)">
+    מרנדרים 10 שניות של 4 ערוצים דרך המנוע ומודדים כמה זמן אמיתי זה לקח.
+    <span class="mono">100%</span> פירושו שהמכשיר בקושי עומד בקצב — מעל זה האודיו ייקטע.
+    זו המדידה שתרוץ שוב על הטלפון ב־T-0.2.5.
+  </p>
+  <button id="benchBtn">הרץ מדידה</button>
+  <div id="benchOut"></div>
+</div>
+
+<div class="panel">
+  <h2>איך לשפוט את זה באוזן</h2>
+  <div class="note">
+    <strong>1.</strong> נגן, ואז לחץ על <strong>+2</strong> תוך כדי נגינה — הנגינה חייבת להמשיך בלי חור ובלי קפיצה.<br>
+    <strong>2.</strong> עבור ל־<strong>−6</strong> ואז ל־<strong>+6</strong>. אלה הקצוות, ושם העיוות תמיד הכי גרוע.<br>
+    <strong>3.</strong> לחץ <strong>"סריקה אוטומטית"</strong> — עובר על כל 13 הסולמות. הקשב במיוחד לתופים:
+    מריחה של הקצב ("phasiness") היא הארטיפקט האופייני של השיטה הזו.<br>
+    <strong>4.</strong> השווה: <strong>0</strong> מול <strong>+1</strong>. ב־+1 ההבדל המוזיקלי קטן,
+    ולכן כל עיוות בולט יותר — זו הבדיקה הכי חושפנית.<br>
+    <strong>5. קצב:</strong> הורד ל־<strong>75%</strong> תוך כדי נגינה — השיר צריך להאט
+    <em>בלי</em> שהקולות יישמעו נמוכים יותר. אם שמעת את הגובה יורד, משהו שבור.<br>
+    <strong>6.</strong> נסה <strong>50%</strong> ואז <strong>150%</strong> — הקצוות.
+    ב־50% ארטיפקטים תמיד בולטים יותר כי כל פריים נמתח יותר.
+  </div>
+  <div class="warn">
+    <strong>מה נחשב "עיוות צורם":</strong> לא כל שינוי בצליל הוא כישלון.
+    השאלה היא האם <em>היית שר על זה</em>. אם התופים נשמעים קצת מרוחים אבל השיר עומד — זה עובר.
+    אם יש צלצול מתכתי, הד מוזר, או שהקול נשמע כמו רובוט — זה נכשל, וזה אומר
+    <span class="mono">D-10</span> נפתחת מחדש.
+  </div>
+</div>
+
+</div>
+
+<script>
+const SONG = "דרוש נא (1)";
+const BASE = "../output/htdemucs/" + encodeURIComponent(SONG) + "/";
+const STEMS = [
+  {id:"vocals", label:"שירה"},
+  {id:"drums",  label:"תופים"},
+  {id:"bass",   label:"בס"},
+  {id:"other",  label:"שאר"}
+];
+
+let ctx, node, gains = {}, buffers = {};
+let duration = 0, playing = false, curPos = 0, semitones = 0;
+
+const fmt = t => (t=Math.max(0,t|0), Math.floor(t/60)+":"+String(t%60).padStart(2,"0"));
+
+async function init(){
+  ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const fill = document.getElementById("loadFill"), msg = document.getElementById("loadMsg");
+
+  let done = 0;
+  for(const s of STEMS){
+    msg.textContent = "טוען " + s.id + ".wav …";
+    const res = await fetch(BASE + s.id + ".wav");
+    if(!res.ok) throw new Error("fetch " + s.id + " → " + res.status);
+    buffers[s.id] = await ctx.decodeAudioData(await res.arrayBuffer());
+    fill.style.width = (++done/(STEMS.length+1)*100) + "%";
+  }
+
+  msg.textContent = "טוען את מנוע ה־DSP …";
+  await ctx.audioWorklet.addModule("pitch-worklet.js");
+  fill.style.width = "100%";
+
+  duration = buffers.vocals.duration;
+  document.getElementById("dur").textContent = fmt(duration);
+
+  buildNode();
+  buildUI();
+
+  msg.textContent = "מוכן · " + ctx.sampleRate + "Hz · " + duration.toFixed(1) + "s · " +
+    "FFT 2048 · 4 ערוצים דרך worklet אחד";
+  document.getElementById("main").style.display = "";
+  document.getElementById("testPanel").style.display = "";
+  document.getElementById("benchPanel").style.display = "";
+}
+
+// Cost is measured by timing an offline render: the worklet cannot time itself
+// (no `performance` in AudioWorkletGlobalScope, and `currentTime` is frozen per quantum).
+async function benchPitch(semitones, secs){
+  const sr = 48000;
+  const off = new OfflineAudioContext(2, sr*secs, sr);
+  await off.audioWorklet.addModule("pitch-worklet.js");
+  const stemData = STEMS.map(s=>({
+    name:s.id,
+    data:[buffers[s.id].getChannelData(0),
+          buffers[s.id].numberOfChannels>1 ? buffers[s.id].getChannelData(1)
+                                           : buffers[s.id].getChannelData(0)]
+  }));
+  const n = new AudioWorkletNode(off,"pitch-processor",{
+    numberOfInputs:0, numberOfOutputs:STEMS.length,
+    outputChannelCount:STEMS.map(()=>2),
+    processorOptions:{stems:stemData, semitones, playing:true}
+  });
+  const mix = off.createGain();
+  for(let i=0;i<STEMS.length;i++) n.connect(mix,i);
+  mix.connect(off.destination);
+  const t0 = performance.now();
+  await off.startRendering();
+  const wall = (performance.now()-t0)/1000;
+  return {semitones, wall, cpuPct: 100*wall/secs, rtf: secs/wall};
+}
+
+document.getElementById("benchBtn").onclick = async ()=>{
+  const btn = document.getElementById("benchBtn");
+  btn.disabled = true; btn.textContent = "מודד…";
+  const rows = [];
+  for(const st of [0,-6,6]){
+    btn.textContent = "מודד… " + (st>0?"+"+st:st);
+    rows.push(await benchPitch(st, 10));
+  }
+  const worst = Math.max(...rows.map(r=>r.cpuPct));
+  const ok = worst < 70;
+  document.getElementById("benchOut").innerHTML = `
+    <table>
+      <tr><th>סולם</th><th>זמן רינדור ל־10 שנ׳</th><th>מהירות מול זמן אמת</th><th>עומס</th></tr>
+      ${rows.map(r=>`<tr>
+        <td class="mono">${r.semitones>0?"+"+r.semitones:r.semitones}</td>
+        <td class="mono">${r.wall.toFixed(2)}s</td>
+        <td class="mono">${r.rtf.toFixed(2)}×</td>
+        <td class="mono" style="color:${r.cpuPct<70?"var(--teal)":"var(--magenta)"}">
+          ${r.cpuPct.toFixed(1)}%</td></tr>`).join("")}
+    </table>
+    <div style="padding:12px 16px;border-radius:8px;font-weight:700;
+      background:${ok?"rgba(37,111,98,.14)":"rgba(190,54,112,.14)"};
+      color:${ok?"var(--teal)":"var(--magenta)"};
+      border:1px solid ${ok?"var(--teal)":"var(--magenta)"}">
+      ${ok ? "✓ המכשיר עומד בזה. העומס הגרוע ביותר: " + worst.toFixed(1) + "%"
+           : "✗ העומס הגרוע ביותר " + worst.toFixed(1) + "% — האודיו עלול להיקטע כאן."}
+    </div>
+    <div class="note" style="margin-top:12px">
+      <strong>שים לב:</strong> העומס עולה ככל שמעלים את הסולם, כי כל חצי טון מעלה
+      דורש יותר פריימים לאותה כמות אודיו. הקצה העליון (+6) הוא המקרה הגרוע.
+    </div>`;
+  btn.disabled = false; btn.textContent = "הרץ שוב";
+};
+
+function buildNode(){
+  const stemData = STEMS.map(s=>({
+    name: s.id,
+    data: [buffers[s.id].getChannelData(0),
+           buffers[s.id].numberOfChannels > 1 ? buffers[s.id].getChannelData(1)
+                                              : buffers[s.id].getChannelData(0)]
+  }));
+
+  node = new AudioWorkletNode(ctx, "pitch-processor", {
+    numberOfInputs: 0,
+    numberOfOutputs: STEMS.length,
+    outputChannelCount: STEMS.map(()=>2),
+    processorOptions: { stems: stemData }
+  });
+
+  STEMS.forEach((s,i)=>{
+    gains[s.id] = ctx.createGain();
+    node.connect(gains[s.id], i);
+    gains[s.id].connect(ctx.destination);
+  });
+
+  node.port.onmessage = e=>{
+    const m = e.data;
+    if(m.type === "status"){
+      curPos = m.posSeconds;
+      document.getElementById("cur").textContent = fmt(curPos);
+      document.getElementById("seek").value = curPos/duration*1000;
+      updateMeters(m);
+    } else if(m.type === "ended"){
+      playing = false;
+      document.getElementById("playBtn").textContent = "נגן";
+    }
+  };
+}
+
+function buildUI(){
+  document.getElementById("keys").innerHTML =
+    Array.from({length:13},(_,i)=>i-6).map(n=>
+      `<button data-key="${n}" class="${n===0?"zero on":""}">${n>0?"+"+n:n}</button>`).join("");
+  document.querySelectorAll("[data-key]").forEach(b=>
+    b.onclick = ()=>setKey(+b.dataset.key));
+  document.querySelectorAll("[data-tempo]").forEach(b=>
+    b.onclick = ()=>setTempo(+b.dataset.tempo));
+  document.getElementById("tempo").oninput = e=>setTempo(+e.target.value);
+
+  document.getElementById("strips").innerHTML = STEMS.map(s=>`
+    <div class="strip">
+      <div class="nm">${s.label}</div>
+      <input type="range" min="0" max="150" value="100" data-vol="${s.id}">
+      <div class="val" data-val="${s.id}">100</div>
+    </div>`).join("");
+  document.querySelectorAll("[data-vol]").forEach(el=>
+    el.oninput = ()=>{
+      gains[el.dataset.vol].gain.setTargetAtTime(el.value/100, ctx.currentTime, 0.01);
+      document.querySelector(`[data-val="${el.dataset.vol}"]`).textContent = el.value;
+    });
+}
+
+function setKey(n){
+  semitones = n;
+  node.port.postMessage({type:"pitch", semitones:n});
+  document.getElementById("keyDisplay").innerHTML =
+    (n>0?"+":"") + n + "<small>חצאי טונים</small>";
+  document.querySelectorAll("[data-key]").forEach(b=>
+    b.classList.toggle("on", +b.dataset.key === n));
+}
+let tempoRatio = 1;
+function setTempo(pct){
+  tempoRatio = pct/100;
+  node.port.postMessage({type:"tempo", ratio:tempoRatio});
+  document.getElementById("tempoDisplay").innerHTML = pct + "%<small>קצב</small>";
+  document.getElementById("tempo").value = pct;
+  document.querySelectorAll("[data-tempo]").forEach(b=>
+    b.classList.toggle("on", +b.dataset.tempo === pct));
+}
+
+function vocalsOff(){
+  const sl = document.querySelector('[data-vol="vocals"]');
+  sl.value = 0; sl.dispatchEvent(new Event("input"));
+}
+
+function updateMeters(m){
+  document.getElementById("meters").innerHTML = `
+    <div class="rd"><b>${m.frames}</b><small>פריימים שעובדו</small></div>
+    <div class="rd"><b>${Math.pow(2,semitones/12).toFixed(4)}</b><small>יחס הסולם</small></div>
+    <div class="rd"><b>${semitones>0?"+":""}${semitones}</b><small>חצאי טונים</small></div>`;
+}
+
+document.getElementById("playBtn").onclick = async ()=>{
+  await ctx.resume();
+  playing = !playing;
+  node.port.postMessage({type: playing ? "play" : "pause"});
+  document.getElementById("playBtn").textContent = playing ? "השהה" : "נגן";
+};
+document.getElementById("stopBtn").onclick = ()=>{
+  playing = false;
+  node.port.postMessage({type:"pause"});
+  node.port.postMessage({type:"seek", pos:0});
+  curPos = 0;
+  document.getElementById("playBtn").textContent = "נגן";
+};
+document.getElementById("seek").oninput = e=>
+  node.port.postMessage({type:"seek", pos: e.target.value/1000*duration});
+
+document.getElementById("sweepBtn").onclick = async ()=>{
+  const btn = document.getElementById("sweepBtn");
+  btn.disabled = true;
+  for(let n=-6; n<=6; n++){
+    setKey(n);
+    btn.textContent = "סורק… " + (n>0?"+"+n:n);
+    await new Promise(r=>setTimeout(r,2500));
+  }
+  setKey(0);
+  btn.disabled = false;
+  btn.textContent = "סריקה אוטומטית −6→+6";
+};
+
+// ---------- objective test: 440Hz sine through the same engine ----------
+document.getElementById("testBtn").onclick = async ()=>{
+  const btn = document.getElementById("testBtn");
+  btn.disabled = true; btn.textContent = "מודד…";
+  const rows = [];
+
+  for(const st of [-6,-3,-1,0,1,3,6]){
+    const r = await measure(st);
+    rows.push(r);
+  }
+
+  const allOk = rows.every(r=>r.errCents < 15 && r.lenErr < 0.02);
+  document.getElementById("testOut").innerHTML = `
+    <table>
+      <tr><th>חצאי טונים</th><th>תדר צפוי</th><th>תדר שנמדד</th>
+          <th>שגיאה (סנט)</th><th>שינוי אורך</th></tr>
+      ${rows.map(r=>`<tr>
+        <td class="mono">${r.st>0?"+"+r.st:r.st}</td>
+        <td class="mono">${r.expected.toFixed(1)} Hz</td>
+        <td class="mono">${r.measured.toFixed(1)} Hz</td>
+        <td class="mono" style="color:${r.errCents<15?"var(--teal)":"var(--magenta)"}">
+          ${r.errCents.toFixed(1)}</td>
+        <td class="mono">${(r.lenErr*100).toFixed(2)}%</td></tr>`).join("")}
+    </table>
+    <div style="padding:12px 16px;border-radius:8px;font-weight:700;
+      background:${allOk?"rgba(37,111,98,.14)":"rgba(190,54,112,.14)"};
+      color:${allOk?"var(--teal)":"var(--magenta)"};
+      border:1px solid ${allOk?"var(--teal)":"var(--magenta)"}">
+      ${allOk ? "✓ המנוע מזיז את הסולם בדיוק הנכון, והאורך נשמר."
+              : "✗ יש סטייה — ראה את השורות המסומנות."}
+    </div>`;
+  btn.disabled = false; btn.textContent = "הרץ שוב";
+};
+
+// The point of the tempo test: speed must change by exactly 1/T while the pitch
+// stays put. A naive playbackRate implementation would pass the speed column and
+// fail the pitch column — that is the whole difference this task is proving.
+document.getElementById("tempoTestBtn").onclick = async ()=>{
+  const btn = document.getElementById("tempoTestBtn");
+  btn.disabled = true; btn.textContent = "מודד…";
+  const rows = [];
+  for(const T of [0.5,0.75,1,1.25,1.5]){
+    btn.textContent = "מודד… " + (T*100) + "%";
+    const pitch = await measure(0, T);
+    const speed = await measureSpeed(T);
+    rows.push({T, hz:pitch.measured, cents:pitch.errCents,
+               gap:speed.measuredGap, expGap:speed.expectedGap,
+               gapErr:speed.errPct, spread:speed.spread});
+  }
+  const ok = rows.every(r=>r.cents < 15 && r.gapErr < 1 && r.spread === 0);
+  document.getElementById("tempoTestOut").innerHTML = `
+    <table>
+      <tr><th>קצב</th><th>גובה הצליל</th><th>סטיית גובה</th>
+          <th>מרווח צפוי</th><th>מרווח שנמדד</th><th>פיזור בין ערוצים</th></tr>
+      ${rows.map(r=>`<tr>
+        <td class="mono">${(r.T*100)}%</td>
+        <td class="mono">${r.hz.toFixed(1)} Hz</td>
+        <td class="mono" style="color:${r.cents<15?"var(--teal)":"var(--magenta)"}">
+          ${r.cents.toFixed(1)} סנט</td>
+        <td class="mono">${r.expGap.toFixed(3)}s</td>
+        <td class="mono">${r.gap.toFixed(3)}s</td>
+        <td class="mono" style="color:${r.spread===0?"var(--teal)":"var(--magenta)"}">
+          ${r.spread} דגימות</td></tr>`).join("")}
+    </table>
+    <div style="padding:12px 16px;border-radius:8px;font-weight:700;
+      background:${ok?"rgba(37,111,98,.14)":"rgba(190,54,112,.14)"};
+      color:${ok?"var(--teal)":"var(--magenta)"};
+      border:1px solid ${ok?"var(--teal)":"var(--magenta)"}">
+      ${ok ? "✓ הקצב משתנה בדיוק, גובה הצליל לא זז, והערוצים נשארים נעולים."
+           : "✗ יש סטייה — ראה את העמודות המסומנות."}
+    </div>`;
+  btn.disabled = false; btn.textContent = "הרץ שוב";
+};
+
+// clicks one second apart in the source must come out 1/T seconds apart
+async function measureSpeed(tempo){
+  const sr = 48000, srcSecs = 12, outSecs = Math.ceil(9/tempo);
+  const mk = ()=>{ const a = new Float32Array(sr*srcSecs);
+    for(let s=1;s<=10;s++){ const P=s*sr;
+      for(let i=0;i<200;i++) a[P+i]=Math.sin(2*Math.PI*2000*i/sr)*(1-i/200); }
+    return a; };
+  const off = new OfflineAudioContext(4, sr*outSecs, sr);
+  await off.audioWorklet.addModule("pitch-worklet.js");
+  const stems = [0,1,2,3].map(i=>({name:"s"+i, data:[mk(), mk()]}));
+  const n = new AudioWorkletNode(off,"pitch-processor",{
+    numberOfInputs:0, numberOfOutputs:4, outputChannelCount:[2,2,2,2],
+    processorOptions:{stems, semitones:0, tempo, playing:true}});
+  const m = off.createChannelMerger(4);
+  for(let i=0;i<4;i++){ const g=off.createGain(); n.connect(g,i); g.connect(m,0,i); }
+  m.connect(off.destination);
+  const buf = await off.startRendering();
+
+  const perCh = [0,1,2,3].map(ch=>{
+    const d = buf.getChannelData(ch); const hits=[]; let i=0;
+    while(i<d.length){
+      if(Math.abs(d[i])>0.15){
+        let j=i,best=i,bv=0;
+        while(j<d.length && j<i+2000){ if(Math.abs(d[j])>bv){bv=Math.abs(d[j]);best=j;} j++; }
+        hits.push(best); i=j+1000;
+      } else i++;
+    }
+    return hits;
+  });
+  const c0 = perCh[0], gaps = [];
+  for(let i=1;i<c0.length;i++) gaps.push((c0[i]-c0[i-1])/sr);
+  const avg = gaps.length ? gaps.reduce((a,b)=>a+b)/gaps.length : 0;
+  const nHits = Math.min(...perCh.map(h=>h.length));
+  let spread = 0;
+  for(let k=0;k<nHits;k++){
+    const v = perCh.map(h=>h[k]);
+    spread = Math.max(spread, Math.max(...v)-Math.min(...v));
+  }
+  return {measuredGap:avg, expectedGap:1/tempo,
+          errPct:Math.abs(avg-1/tempo)/(1/tempo)*100, spread};
+}
+
+async function measure(st, tempo = 1){
+  const sr = 48000, secs = 2, F0 = 440;
+  const off = new OfflineAudioContext(2, sr*secs, sr);
+  await off.audioWorklet.addModule("pitch-worklet.js");
+
+  const n = sr*secs;
+  const tone = new Float32Array(n);
+  for(let i=0;i<n;i++) tone[i] = Math.sin(2*Math.PI*F0*i/sr) * 0.5;
+
+  const testNode = new AudioWorkletNode(off, "pitch-processor", {
+    numberOfInputs:0, numberOfOutputs:1, outputChannelCount:[2],
+    processorOptions:{ stems:[{name:"t", data:[tone, tone]}],
+                       semitones:st, tempo:tempo, playing:true }
+  });
+  testNode.connect(off.destination);
+
+  const rendered = await off.startRendering();
+  const d = rendered.getChannelData(0);
+
+  // skip the vocoder fade-in, analyse a steady middle section
+  const from = sr*0.5, len = 16384;
+  const seg = d.subarray(from, from+len);
+
+  // parabolic-interpolated peak of the magnitude spectrum
+  const {freq, energy} = dominantFreq(seg, sr);
+  const expected = F0 * Math.pow(2, st/12);
+  const errCents = Math.abs(1200*Math.log2(freq/expected));
+
+  // duration check: energy should still fill the whole 2s, not stretch or shrink
+  let last = 0;
+  for(let i=d.length-1;i>=0;i--) if(Math.abs(d[i])>0.02){ last = i; break; }
+  const lenErr = Math.abs(last/(sr*secs) - 1);
+
+  return {st, expected, measured:freq, errCents, lenErr, energy};
+}
+
+function dominantFreq(x, sr){
+  const N = 16384;
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for(let i=0;i<N;i++) re[i] = x[i] * 0.5*(1-Math.cos(2*Math.PI*i/N));
+  // simple DFT via FFT (radix-2)
+  fftJS(re, im, N);
+  let best=0, bi=1;
+  for(let k=1;k<N/2;k++){
+    const m = re[k]*re[k]+im[k]*im[k];
+    if(m>best){best=m;bi=k;}
+  }
+  const mag = k => Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+  const a=mag(bi-1), b=mag(bi), c=mag(bi+1);
+  const delta = 0.5*(a-c)/(a-2*b+c || 1e-12);
+  return {freq:(bi+delta)*sr/N, energy:Math.sqrt(best)};
+}
+
+function fftJS(re, im, N){
+  for(let i=1,j=0;i<N;i++){
+    let bit=N>>1;
+    for(;j&bit;bit>>=1) j^=bit;
+    j^=bit;
+    if(i<j){ let t=re[i];re[i]=re[j];re[j]=t; t=im[i];im[i]=im[j];im[j]=t; }
+  }
+  for(let len=2;len<=N;len<<=1){
+    const ang=-2*Math.PI/len;
+    for(let i=0;i<N;i+=len){
+      for(let k=0;k<len/2;k++){
+        const c=Math.cos(ang*k), s=Math.sin(ang*k);
+        const a=i+k, b=a+len/2;
+        const tr=re[b]*c-im[b]*s, ti=re[b]*s+im[b]*c;
+        re[b]=re[a]-tr; im[b]=im[a]-ti;
+        re[a]+=tr; im[a]+=ti;
+      }
+    }
+  }
+}
+
+init().catch(e=>{
+  document.getElementById("loadMsg").innerHTML =
+    '<span style="color:#BE3670">שגיאה: ' + e.message + '</span>';
+  console.error(e);
+});
+</script>
+</body>
+</html>
