@@ -1,27 +1,31 @@
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-
-# Media & generated data
-input/
-output/
-transcripts/
-*.mp3
-*.wav
-*.m4a
-*.flac
-
-# Secrets / certificates
-certs/*.pem
-certs/*.key
+# secrets
 .env
 .env.*
+!.env.example
+certs/
 
-# Tooling / OS
+# local tooling state
 .claude/
-.vscode/
-.idea/
-Thumbs.db
-desktop.ini
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# audio: input songs and every derived stem. These are large (the output tree is
+# ~1GB) and fully reproducible from the source files, so they stay out of git.
+input/
+output/htdemucs/
+output/remote/
+
+# keep the measurements and reports, which are the actual results of phase 0
+!output/*.md
+!output/*.csv
+!output/*.json
+
+# transcripts are small and worth versioning, except the scratch audio
+transcripts/_smoke.wav
+
+# node
+node_modules/
+.next/

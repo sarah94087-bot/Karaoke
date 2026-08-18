@@ -1,0 +1,29 @@
+[
+ {
+  "song": "דרוש נא (1)",
+  "source": "vocals",
+  "segments": 13,
+  "words": 74,
+  "audio_sec": 132.8,
+  "proc_sec": 428.9,
+  "mean_word_conf": 0.898
+ },
+ {
+  "song": "אבי לרנר - ותהי שמחה",
+  "source": "vocals",
+  "segments": 23,
+  "words": 182,
+  "audio_sec": 165.7,
+  "proc_sec": 653.8,
+  "mean_word_conf": 0.758
+ },
+ {
+  "song": "שי וינר - כנפי השכינה",
+  "source": "vocals",
+  "segments": 17,
+  "words": 58,
+  "audio_sec": 223.1,
+  "proc_sec": 396.6,
+  "mean_word_conf": 0.822
+ }
+]

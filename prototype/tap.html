@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-0.5.3 — תזמון ידני</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px 90px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);
+  padding:22px 0;margin-bottom:20px}
+h1{margin:.1em 0;font-size:1.4rem}
+.lede{color:#DCCFE6;margin:0;font-size:.92rem;max-width:62ch}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;margin:0 0 18px}
+.panel h2{margin:0 0 10px;font-size:1.05rem;color:var(--plum)}
+select{padding:9px 12px;border:1px solid var(--rule);border-radius:6px;background:#fff;
+  width:100%;font-family:inherit;font-size:.95rem}
+button{background:var(--amber);color:#1B1526;border:0;border-radius:6px;padding:10px 18px;
+  font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer}
+button.sec{background:var(--plum);color:#F4EEF8}
+button.small{padding:6px 12px;font-size:.85rem}
+button.on{background:var(--teal);color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+.transport{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0}
+
+.stage{background:var(--plum);color:#F4EEF8;border-radius:12px;padding:26px 22px;
+  text-align:center;margin:16px 0}
+.stage .now{font-size:1.5rem;font-weight:700;min-height:2.4em;display:flex;
+  align-items:center;justify-content:center;text-wrap:balance}
+.stage .next{color:#C4B2D2;font-size:.95rem;min-height:1.5em;margin-top:8px}
+.stage .count{font-family:ui-monospace,Consolas,monospace;font-size:.8rem;
+  color:var(--amber);direction:ltr;unicode-bidi:isolate;margin-bottom:10px}
+.stage .drift{font-family:ui-monospace,Consolas,monospace;font-size:.85rem;
+  direction:ltr;unicode-bidi:isolate;margin-top:12px;min-height:1.4em}
+.stage .drift.ok{color:#8FD9C4}
+.stage .drift.warn{color:#FFC46B;font-weight:700}
+.stage .drift.bad{background:var(--magenta);color:#fff;font-weight:700;
+  border-radius:6px;padding:5px 10px;display:inline-block}
+
+.tapbtn{width:100%;padding:22px;font-size:1.25rem;background:var(--amber);
+  border-radius:12px;margin-top:14px}
+.tapbtn:active{background:var(--teal);color:#fff}
+
+.lines{max-height:280px;overflow-y:auto;border:1px solid var(--rule);border-radius:8px;
+  background:#fff;padding:8px}
+.ln{display:grid;grid-template-columns:64px 64px 1fr;gap:10px;padding:6px 9px;
+  border-radius:5px;font-size:.9rem;align-items:center}
+.ln.cur{background:rgba(224,148,34,.18);font-weight:700}
+.ln.done{color:var(--ink-soft)}
+.ln .tm{font-family:ui-monospace,Consolas,monospace;font-size:.8rem;direction:ltr;
+  unicode-bidi:isolate;color:var(--teal);font-weight:700}
+.ln .ref{font-family:ui-monospace,Consolas,monospace;font-size:.76rem;direction:ltr;
+  unicode-bidi:isolate;color:var(--ink-soft)}
+
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-top:12px}
+.rd{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:10px 12px}
+.rd b{display:block;font-family:ui-monospace,Consolas,monospace;font-size:1.2rem}
+.rd small{color:var(--ink-soft);font-size:.78rem}
+.rd.good b{color:var(--teal)} .rd.bad b{color:var(--magenta)}
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+table{width:100%;border-collapse:collapse;font-size:.88rem;margin:10px 0}
+th,td{border:1px solid var(--rule);padding:6px 9px;text-align:right}
+th{background:var(--paper)}
+kbd{background:var(--paper);border:1px solid var(--rule);border-bottom-width:2px;
+  border-radius:4px;padding:1px 7px;font-family:ui-monospace,Consolas,monospace;font-size:.85em}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.5.3 — תזמון ידני כאמת מידה</h1>
+  <p class="lede">את מקישה בתחילת כל שורה מושרת, וזה הופך לאמת המידה
+  שמולה נמדדת הסטייה של התזמון האוטומטי.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>הכנה</h2>
+  <select id="songSel"></select>
+  <div class="transport">
+    <button class="small sec" id="srcBtn">ערוץ שירה בלבד</button>
+    <button class="small sec" id="rateBtn">מהירות 100%</button>
+    <span class="mono" id="info" style="font-size:.85rem;color:var(--ink-soft)"></span>
+  </div>
+  <div class="note">
+    <strong>מומלץ:</strong> ערוץ שירה בלבד ומהירות 75% — קל בהרבה לפגוע במדויק,
+    וגובה הצליל נשמר. הדיוק חשוב יותר מהנוחות: זו אמת המידה.
+  </div>
+  <div class="warn">
+    <strong>אל תבחרי שיר עם שורות חוזרות.</strong> ב"דרוש נא" אותה שורה חוזרת
+    ארבע פעמים במרווחי ~14.5 שניות, ואי אפשר לשמור על המקום.
+    <strong>"אבי לרנר — ותהי שמחה"</strong> הוא הבחירה הנכונה כאן: 23 שורות,
+    רובן שונות זו מזו.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>הקשה</h2>
+  <div class="stage">
+    <div class="count" id="count">0 / 0</div>
+    <div class="now" id="now">לחצי "התחל" כדי להתחיל</div>
+    <div class="next" id="next"></div>
+    <div class="drift" id="drift"></div>
+  </div>
+  <button class="tapbtn" id="tapBtn" disabled>הקישי כאן — או <kbd>רווח</kbd></button>
+  <div class="transport">
+    <button id="startBtn">התחל</button>
+    <button class="sec small" id="undoBtn" disabled>בטל הקשה אחרונה</button>
+    <button class="sec small" id="resetBtn">התחל מחדש</button>
+    <span class="mono" id="clock" style="font-size:.9rem"></span>
+  </div>
+  <div class="warn">
+    הקישי <strong>ברגע שהמילה הראשונה של השורה נשמעת</strong>, לא לפניה ולא אחריה.
+    אחרי כל הקשה מוצג מיד כמה היא רחוקה מהצפוי — <strong>אם מופיעה אזהרה אדומה,
+    עצרי, בטלי הקשה אחרונה ותקני.</strong> אזהרה אדומה פירושה שהספירה החליקה בשורה,
+    וכל ההמשך יהיה פסול.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>השורות</h2>
+  <div class="lines" id="lines"></div>
+</div>
+
+<div class="panel">
+  <h2>התוצאה</h2>
+  <button id="calcBtn" class="sec" disabled>חשב סטייה</button>
+  <div id="result"></div>
+</div>
+
+</div>
+
+<audio id="au"></audio>
+
+<script>
+const SONGS = [
+  "דרוש נא (1)",
+  "אבי לרנר - ותהי שמחה",
+  "שי וינר - כנפי השכינה"
+];
+let song=null, raw=[], aligned=[], taps=[], idx=0, useVocals=true, rate=0.75, running=false;
+
+const au = document.getElementById("au");
+au.preservesPitch = true; au.mozPreservesPitch = true; au.webkitPreservesPitch = true;
+
+document.getElementById("songSel").innerHTML =
+  SONGS.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
+document.getElementById("songSel").onchange = e=>load(SONGS[+e.target.value]);
+
+function parseLrc(t){
+  const out=[];
+  for(const l of t.split(/\r?\n/)){
+    const m=l.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+    if(m && m[3].trim()) out.push({t:+m[1]*60+parseFloat(m[2]), text:m[3].trim()});
+  }
+  return out.sort((a,b)=>a.t-b.t);
+}
+
+async function load(name){
+  song=name; taps=[]; idx=0; running=false;
+  au.pause();
+  const [r,a] = await Promise.all([
+    fetch("../transcripts/"+encodeURIComponent(name)+".raw.lrc").then(x=>x.text()),
+    fetch("../transcripts/"+encodeURIComponent(name)+".aligned.lrc").then(x=>x.text())
+  ]);
+  raw = parseLrc(r); aligned = parseLrc(a);
+  setSrc();
+  render();
+  document.getElementById("info").textContent = raw.length + " שורות";
+  document.getElementById("calcBtn").disabled = true;
+  document.getElementById("tapBtn").disabled = true;
+}
+
+function setSrc(){
+  const keep = au.currentTime||0, was = !au.paused;
+  au.src = "../output/htdemucs/"+encodeURIComponent(song)+"/"+
+           (useVocals?"vocals.mp3":"original.mp3");
+  au.addEventListener("loadedmetadata", ()=>{
+    au.playbackRate = rate;
+    if(keep) au.currentTime = keep;
+    if(was) au.play();
+  }, {once:true});
+}
+
+function render(){
+  document.getElementById("lines").innerHTML = raw.map((l,i)=>`
+    <div class="ln ${i===idx?"cur":""} ${i<idx?"done":""}" data-i="${i}">
+      <span class="tm">${taps[i]!=null?taps[i].toFixed(2):"—"}</span>
+      <span class="ref">${l.t.toFixed(2)}</span>
+      <span>${esc(l.text)}</span>
+    </div>`).join("");
+  const cur = document.querySelector(".ln.cur");
+  if(cur) cur.scrollIntoView({block:"center"});
+  document.getElementById("count").textContent = idx + " / " + raw.length;
+  document.getElementById("now").textContent =
+    idx < raw.length ? raw[idx].text : "סיימת — לחצי \"חשב סטייה\"";
+  document.getElementById("next").textContent =
+    idx < raw.length
+      ? "צפוי בסביבות " + (aligned[idx]||raw[idx]).t.toFixed(1) + "s" +
+        (idx+1 < raw.length ? "   ·   הבא: " + raw[idx+1].text : "")
+      : "";
+  document.getElementById("undoBtn").disabled = idx===0;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function tap(){
+  if(!running || idx>=raw.length) return;
+  taps[idx] = au.currentTime;
+  idx++;
+  render();
+  checkDrift();
+  if(idx>=raw.length){
+    running=false; au.pause();
+    document.getElementById("calcBtn").disabled = false;
+    document.getElementById("tapBtn").disabled = true;
+  }
+}
+/* A tap far from where the reference expects that line almost always means the
+   count has slipped by a line, not that the reference is wrong by ten seconds.
+   Catching it live is the difference between a redo and a wasted session. */
+function checkDrift(){
+  const el = document.getElementById("drift");
+  const i = idx-1;
+  if(i < 0 || !taps[i]){ el.textContent=""; return; }
+  const ref = (aligned[i]||raw[i]).t;
+  const d = taps[i] - ref;
+  const near = raw.reduce((b,l,j)=>
+    Math.abs(taps[i]-(aligned[j]||l).t) < Math.abs(taps[i]-(aligned[b]||raw[b]).t) ? j : b, 0);
+
+  if(Math.abs(d) <= 1.2){
+    el.className="drift ok";
+    el.textContent = "✓ " + (d>=0?"+":"") + d.toFixed(2) + "s";
+  } else if(near !== i){
+    el.className="drift bad";
+    el.textContent = "⚠ ההקשה קרובה לשורה " + (near+1) + ", לא " + (i+1) +
+      " — בטלי הקשה אחרונה ותקני";
+  } else {
+    el.className="drift warn";
+    el.textContent = "⚠ " + (d>=0?"+":"") + d.toFixed(2) + "s — רחוק מהצפוי";
+  }
+}
+
+document.getElementById("tapBtn").onclick = tap;
+document.addEventListener("keydown", e=>{
+  if(e.code==="Space"){ e.preventDefault(); tap(); }
+});
+
+document.getElementById("startBtn").onclick = async ()=>{
+  taps=[]; idx=0; running=true;
+  au.currentTime = 0; au.playbackRate = rate;
+  await au.play();
+  document.getElementById("tapBtn").disabled = false;
+  document.getElementById("calcBtn").disabled = true;
+  render();
+};
+document.getElementById("undoBtn").onclick = ()=>{
+  if(idx>0){ idx--; taps[idx]=null; running=true;
+    document.getElementById("tapBtn").disabled=false; render(); }
+};
+document.getElementById("resetBtn").onclick = ()=>{
+  taps=[]; idx=0; running=false; au.pause(); au.currentTime=0;
+  document.getElementById("calcBtn").disabled=true;
+  document.getElementById("tapBtn").disabled=true;
+  render();
+};
+document.getElementById("srcBtn").onclick = ()=>{
+  useVocals=!useVocals;
+  document.getElementById("srcBtn").textContent = useVocals?"ערוץ שירה בלבד":"שיר מלא";
+  document.getElementById("srcBtn").classList.toggle("on", useVocals);
+  setSrc();
+};
+document.getElementById("rateBtn").onclick = ()=>{
+  rate = rate===1 ? 0.75 : rate===0.75 ? 0.5 : 1;
+  au.playbackRate = rate;
+  document.getElementById("rateBtn").textContent = "מהירות " + Math.round(rate*100) + "%";
+  document.getElementById("rateBtn").classList.toggle("on", rate!==1);
+};
+setInterval(()=>{
+  document.getElementById("clock").textContent =
+    au.currentTime ? au.currentTime.toFixed(1)+"s" : "";
+}, 200);
+
+function stats(diffs){
+  const a = diffs.map(Math.abs).sort((x,y)=>x-y);
+  const mean = a.reduce((s,v)=>s+v,0)/a.length;
+  return {mean, max:a[a.length-1], median:a[Math.floor(a.length/2)],
+          within100:100*a.filter(v=>v<=0.1).length/a.length};
+}
+
+document.getElementById("calcBtn").onclick = ()=>{
+  const pairs = taps.map((t,i)=>({t,i})).filter(p=>p.t!=null);
+  if(pairs.length < 3){ alert("צריך לפחות 3 הקשות"); return; }
+
+  const dRaw = pairs.map(p=>raw[p.i].t - p.t);
+  const dAli = pairs.map(p=>{
+    const a = aligned[p.i]; return a ? a.t - p.t : null;
+  }).filter(v=>v!=null);
+
+  // A tap always lags the sound by human reaction time. That constant lag is a
+  // property of the measurer, not of the aligner, so it is reported separately:
+  // the median of the tap-vs-reference differences absorbs it.
+  const lag = [...dRaw].sort((a,b)=>a-b)[Math.floor(dRaw.length/2)];
+  const dRawC = dRaw.map(v=>v-lag);
+  const lagA = [...dAli].sort((a,b)=>a-b)[Math.floor(dAli.length/2)];
+  const dAliC = dAli.map(v=>v-lagA);
+  // Report the lag against the more accurate reference, as a positive number of
+  // milliseconds: the difference is (reference - tap), so a late tap is negative.
+  const reactionMs = -lagA * 1000;
+
+  const sR=stats(dRaw), sRC=stats(dRawC), sA=stats(dAli), sAC=stats(dAliC);
+
+  document.getElementById("result").innerHTML = `
+    <table>
+      <tr><th>מקור תזמון</th><th>סטייה ממוצעת</th><th>מקסימלית</th><th>חציון</th><th>בתוך 100ms</th></tr>
+      <tr><td>Whisper גולמי</td>
+        <td class="mono">${sR.mean.toFixed(3)}s</td><td class="mono">${sR.max.toFixed(3)}s</td>
+        <td class="mono">${sR.median.toFixed(3)}s</td><td class="mono">${sR.within100.toFixed(0)}%</td></tr>
+      <tr><td>Whisper — אחרי הסרת השהיית תגובה</td>
+        <td class="mono">${sRC.mean.toFixed(3)}s</td><td class="mono">${sRC.max.toFixed(3)}s</td>
+        <td class="mono">${sRC.median.toFixed(3)}s</td><td class="mono">${sRC.within100.toFixed(0)}%</td></tr>
+      <tr><td>יישור אנרגטי</td>
+        <td class="mono">${sA.mean.toFixed(3)}s</td><td class="mono">${sA.max.toFixed(3)}s</td>
+        <td class="mono">${sA.median.toFixed(3)}s</td><td class="mono">${sA.within100.toFixed(0)}%</td></tr>
+      <tr><td>יישור אנרגטי — אחרי הסרת השהיית תגובה</td>
+        <td class="mono">${sAC.mean.toFixed(3)}s</td><td class="mono">${sAC.max.toFixed(3)}s</td>
+        <td class="mono">${sAC.median.toFixed(3)}s</td><td class="mono">${sAC.within100.toFixed(0)}%</td></tr>
+    </table>
+    <div class="readout">
+      <div class="rd"><b>${pairs.length}</b><small>שורות שתוזמנו</small></div>
+      <div class="rd"><b>${reactionMs.toFixed(0)} ms</b><small>השהיית תגובה שנמדדה</small></div>
+      <div class="rd ${sAC.mean<sRC.mean?"good":"bad"}">
+        <b>${sAC.mean<sRC.mean?"היישור עדיף":"הגולמי עדיף"}</b><small>מי מנצח</small></div>
+    </div>
+    <div class="note"><strong>למה שתי שורות לכל מקור:</strong> הקשה אנושית תמיד מאחרת
+      אחרי הצליל בזמן תגובה קבוע. זו תכונה של המודד, לא של המיישר — ולכן
+      השורה השנייה מסירה את החציון ומראה את הפיזור האמיתי.</div>
+    <button class="sec" id="dl">הורד תוצאה</button>`;
+
+  document.getElementById("dl").onclick = ()=>{
+    const out = {task:"T-0.5.3", song, date:new Date().toISOString(),
+      source:useVocals?"vocals":"original", playback_rate:rate,
+      lines_timed:pairs.length, reaction_lag_ms:+reactionMs.toFixed(1),
+      taps:pairs.map(p=>({line:p.i, tap:+p.t.toFixed(3),
+        raw:+raw[p.i].t.toFixed(3),
+        aligned: aligned[p.i] ? +aligned[p.i].t.toFixed(3) : null,
+        text: raw[p.i].text})),
+      whisper_raw:{mean_s:+sR.mean.toFixed(3), max_s:+sR.max.toFixed(3),
+        median_s:+sR.median.toFixed(3), within_100ms_pct:+sR.within100.toFixed(1)},
+      whisper_lag_removed:{mean_s:+sRC.mean.toFixed(3), max_s:+sRC.max.toFixed(3),
+        median_s:+sRC.median.toFixed(3), within_100ms_pct:+sRC.within100.toFixed(1)},
+      energy_aligned:{mean_s:+sA.mean.toFixed(3), max_s:+sA.max.toFixed(3),
+        median_s:+sA.median.toFixed(3), within_100ms_pct:+sA.within100.toFixed(1)},
+      energy_aligned_lag_removed:{mean_s:+sAC.mean.toFixed(3), max_s:+sAC.max.toFixed(3),
+        median_s:+sAC.median.toFixed(3), within_100ms_pct:+sAC.within100.toFixed(1)}};
+    const b = new Blob([JSON.stringify(out,null,1)],{type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "tap_0.5.3_" + song.replace(/[^\w֐-׿]+/g,"_") + ".json";
+    a.click();
+  };
+};
+
+document.getElementById("srcBtn").classList.add("on");
+document.getElementById("rateBtn").textContent = "מהירות 75%";
+document.getElementById("rateBtn").classList.add("on");
+// default to the song with the fewest repeated lines - a repetitive song makes it
+// impossible to keep your place, which is what invalidated the first session
+document.getElementById("songSel").value = "1";
+load(SONGS[1]);
+</script>
+</body>
+</html>

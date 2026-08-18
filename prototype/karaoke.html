@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-0.5.1 — אימות יישור המילים</title>
+<style>
+:root{
+  --paper:#EFECF4;--card:#FBFAFD;--ink:#1B1526;--ink-soft:#4A4159;
+  --plum:#4B2A5E;--amber:#E09422;--magenta:#BE3670;--teal:#256F62;
+  --rule:rgba(27,21,38,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:"Assistant",system-ui,"Segoe UI",Arial,sans-serif;font-size:16px;line-height:1.6}
+.wrap{max-width:880px;margin:0 auto;padding:0 20px 90px}
+header{background:var(--plum);color:#F4EEF8;border-bottom:5px solid var(--amber);
+  padding:22px 0;margin-bottom:20px}
+h1{margin:.1em 0;font-size:1.4rem}
+.lede{color:#DCCFE6;margin:0;font-size:.92rem;max-width:62ch}
+.mono{font-family:ui-monospace,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+.panel{background:var(--card);border:1px solid var(--rule);border-radius:10px;
+  padding:16px 18px;margin:0 0 18px}
+.panel h2{margin:0 0 10px;font-size:1.05rem;color:var(--plum)}
+select{padding:9px 12px;border:1px solid var(--rule);border-radius:6px;background:#fff;width:100%;
+  font-family:inherit;font-size:.95rem}
+button{background:var(--amber);color:#1B1526;border:0;border-radius:6px;padding:10px 18px;
+  font-family:inherit;font-weight:700;font-size:.95rem;cursor:pointer}
+button.sec{background:var(--plum);color:#F4EEF8}
+button.small{padding:6px 12px;font-size:.85rem}
+button.on{background:var(--teal);color:#fff}
+.transport{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.time{font-family:ui-monospace,Consolas,monospace;font-size:.95rem;direction:ltr}
+#seek{width:100%}
+
+#lyrics{height:340px;overflow-y:auto;background:#fff;border:1px solid var(--rule);
+  border-radius:8px;padding:14px 16px;scroll-behavior:smooth}
+.line{padding:7px 10px;border-radius:6px;font-size:1.05rem;color:var(--ink-soft);
+  transition:background .12s,color .12s;cursor:pointer}
+.line .ts{font-family:ui-monospace,Consolas,monospace;font-size:.72rem;
+  color:var(--ink-soft);margin-inline-end:8px;direction:ltr;unicode-bidi:isolate}
+.line.active{background:var(--plum);color:#fff;font-weight:700}
+.line.active .ts{color:var(--amber)}
+.line.past{color:rgba(27,21,38,.35)}
+
+.note{border-inline-start:3px solid var(--teal);background:rgba(37,111,98,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+.warn{border-inline-start:3px solid var(--magenta);background:rgba(190,54,112,.08);
+  padding:11px 15px;border-radius:0 6px 6px 0;margin:12px 0;font-size:.9rem}
+.readout{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+.rd{background:#fff;border:1px solid var(--rule);border-radius:8px;padding:10px 12px}
+.rd b{display:block;font-family:ui-monospace,Consolas,monospace;font-size:1.15rem}
+.rd small{color:var(--ink-soft);font-size:.78rem}
+.rd.bad b{color:var(--magenta)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>T-0.5.1 — האם המילים מתנגנות נכון</h1>
+  <p class="lede">שני קבצי תזמון לאותו שיר: <strong>גולמי</strong> — כפי ש־Whisper החזיר,
+  ו<strong>מיושר</strong> — הוצמד לתחילת המשפט המושר שזוהה באודיו.
+  החליפי ביניהם תוך כדי נגינה כדי לשמוע את ההבדל.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="panel">
+  <h2>שיר ומקור תזמון</h2>
+  <select id="songSel"></select>
+  <div class="transport">
+    <button id="rawBtn" class="sec small">תזמון גולמי</button>
+    <button id="alignBtn" class="sec small on">תזמון מיושר</button>
+    <span class="mono" id="srcMsg" style="font-size:.85rem;color:var(--ink-soft)"></span>
+  </div>
+  <div class="readout" id="stats"></div>
+</div>
+
+<div class="panel">
+  <h2>נגן</h2>
+  <div class="transport">
+    <button id="playBtn">נגן</button>
+    <button class="sec small" id="vocalBtn">שירה בלבד</button>
+    <span class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></span>
+  </div>
+  <input type="range" id="seek" min="0" max="1000" value="0">
+  <div id="lyrics"></div>
+  <div class="note" style="margin-top:12px">
+    לחיצה על שורה קופצת אליה. <strong>"שירה בלבד"</strong> מנגן את ערוץ השירה המבודד —
+    שם קל בהרבה לשמוע אם ההדגשה מקדימה או מאחרת.
+  </div>
+</div>
+
+<div class="warn">
+  <strong>מה לבדוק:</strong> האם השורה נדלקת <em>ברגע</em> שהמילה הראשונה שלה מושרת.
+  אם היא נדלקת מוקדם מדי — התזמון מקדים. אם מאוחר — מאחר.
+  בתזמון הגולמי צפוי לראות פיגור או הקדמה של כחצי שנייה; זו בדיוק המדידה של T-0.5.3.
+</div>
+
+</div>
+
+<audio id="au"></audio>
+
+<script>
+const SONGS = [
+  "דרוש נא (1)",
+  "אבי לרנר - ותהי שמחה",
+  "שי וינר - כנפי השכינה"
+];
+let song = null, lines = [], mode = "aligned", useVocals = false, report = null;
+
+const au = document.getElementById("au");
+document.getElementById("songSel").innerHTML =
+  SONGS.map((s,i)=>`<option value="${i}">${s}</option>`).join("");
+document.getElementById("songSel").onchange = e=>load(SONGS[+e.target.value]);
+
+const fmt = t => (t=Math.max(0,t|0), Math.floor(t/60)+":"+String(t%60).padStart(2,"0"));
+
+function parseLrc(text){
+  const out = [];
+  for(const raw of text.split(/\r?\n/)){
+    const m = raw.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
+    if(m && m[3].trim()) out.push({t:+m[1]*60 + parseFloat(m[2]), text:m[3].trim()});
+  }
+  return out.sort((a,b)=>a.t-b.t);
+}
+
+async function load(name){
+  song = name;
+  au.pause();
+  setAudioSrc();
+  if(!report){
+    try{ report = await (await fetch("../transcripts/align_report.json")).json(); }
+    catch(e){ report = []; }
+  }
+  await loadLrc();
+  showStats();
+}
+
+function setAudioSrc(){
+  const file = useVocals ? "vocals.mp3" : "original.mp3";
+  const t = au.currentTime || 0;
+  au.src = "../output/htdemucs/" + encodeURIComponent(song) + "/" + file;
+  au.addEventListener("loadedmetadata", ()=>{
+    document.getElementById("dur").textContent = fmt(au.duration);
+    if(t) au.currentTime = t;
+  }, {once:true});
+}
+
+async function loadLrc(){
+  const suffix = mode === "raw" ? ".raw.lrc" : ".aligned.lrc";
+  const res = await fetch("../transcripts/" + encodeURIComponent(song) + suffix);
+  lines = parseLrc(await res.text());
+  document.getElementById("srcMsg").textContent =
+    (mode === "raw" ? "raw" : "aligned") + " · " + lines.length + " lines";
+  render();
+}
+
+function render(){
+  document.getElementById("lyrics").innerHTML = lines.map((l,i)=>
+    `<div class="line" data-i="${i}"><span class="ts">${l.t.toFixed(2)}</span>${esc(l.text)}</div>`
+  ).join("");
+  document.querySelectorAll(".line").forEach(el=>
+    el.onclick = ()=>{ au.currentTime = lines[+el.dataset.i].t; au.play(); });
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+function showStats(){
+  const r = (report||[]).find(x=>x.song === song);
+  if(!r){ document.getElementById("stats").innerHTML = ""; return; }
+  document.getElementById("stats").innerHTML = `
+    <div class="rd bad"><b>${r.median_abs_ms.toFixed(0)} ms</b><small>שגיאה חציונית (גולמי)</small></div>
+    <div class="rd"><b>${r.median_offset_ms>0?"+":""}${r.median_offset_ms.toFixed(0)} ms</b>
+      <small>הטיה שיטתית</small></div>
+    <div class="rd bad"><b>${r.within_100ms_pct.toFixed(0)}%</b><small>בתוך 100ms</small></div>
+    <div class="rd"><b>${r.whisper_segments} / ${r.detected_phrases}</b>
+      <small>קטעי Whisper / משפטים באודיו</small></div>`;
+}
+
+document.getElementById("rawBtn").onclick = ()=>{
+  mode = "raw";
+  document.getElementById("rawBtn").classList.add("on");
+  document.getElementById("alignBtn").classList.remove("on");
+  loadLrc();
+};
+document.getElementById("alignBtn").onclick = ()=>{
+  mode = "aligned";
+  document.getElementById("alignBtn").classList.add("on");
+  document.getElementById("rawBtn").classList.remove("on");
+  loadLrc();
+};
+document.getElementById("vocalBtn").onclick = ()=>{
+  useVocals = !useVocals;
+  document.getElementById("vocalBtn").classList.toggle("on", useVocals);
+  document.getElementById("vocalBtn").textContent = useVocals ? "שיר מלא" : "שירה בלבד";
+  const playing = !au.paused;
+  setAudioSrc();
+  if(playing) au.play();
+};
+document.getElementById("playBtn").onclick = ()=>{
+  if(au.paused){ au.play(); document.getElementById("playBtn").textContent = "השהה"; }
+  else { au.pause(); document.getElementById("playBtn").textContent = "נגן"; }
+};
+document.getElementById("seek").oninput = e=>{
+  if(au.duration) au.currentTime = e.target.value/1000*au.duration;
+};
+
+let lastActive = -1;
+au.addEventListener("timeupdate", ()=>{
+  const t = au.currentTime;
+  document.getElementById("cur").textContent = fmt(t);
+  if(au.duration) document.getElementById("seek").value = t/au.duration*1000;
+
+  let idx = -1;
+  for(let i=0;i<lines.length;i++) if(lines[i].t <= t) idx = i; else break;
+  if(idx !== lastActive){
+    document.querySelectorAll(".line").forEach((el,i)=>{
+      el.classList.toggle("active", i === idx);
+      el.classList.toggle("past", i < idx);
+    });
+    const el = document.querySelector(`.line[data-i="${idx}"]`);
+    if(el) el.scrollIntoView({block:"center"});
+    lastActive = idx;
+  }
+});
+
+load(SONGS[0]);
+</script>
+</body>
+</html>

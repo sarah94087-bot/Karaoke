@@ -1,0 +1,47 @@
+[
+ {
+  "song": "דרוש נא (1)",
+  "words": 71,
+  "phrases": 12,
+  "attacks": 655,
+  "phrases_used": 10,
+  "E_raw_median_ms": 45.000000000001705,
+  "E_adj_median_ms": 19.99999999999602,
+  "E_ctrl_median_ms": 41.03926548050474,
+  "E_adj_within_100ms": 94.28571428571428,
+  "E_ctrl_within_100ms": 82.85714285714286,
+  "phrase_offset_spread_ms": 190.07630046904865,
+  "D_boundary_energy": 0.41725125908851624,
+  "D_control_energy": 0.45650631189346313
+ },
+ {
+  "song": "אבי לרנר - ותהי שמחה",
+  "words": 179,
+  "phrases": 5,
+  "attacks": 790,
+  "phrases_used": 4,
+  "E_raw_median_ms": 40.000000000000924,
+  "E_adj_median_ms": 29.999999999986926,
+  "E_ctrl_median_ms": 37.05028196501203,
+  "E_adj_within_100ms": 91.01123595505618,
+  "E_ctrl_within_100ms": 91.57303370786516,
+  "phrase_offset_spread_ms": 347.27510708370704,
+  "D_boundary_energy": 0.42031174898147583,
+  "D_control_energy": 0.2760443389415741
+ },
+ {
+  "song": "שי וינר - כנפי השכינה",
+  "words": 58,
+  "phrases": 33,
+  "attacks": 1142,
+  "phrases_used": 12,
+  "E_raw_median_ms": 39.99999999999915,
+  "E_adj_median_ms": 9.99999999999801,
+  "E_ctrl_median_ms": 48.28601119233156,
+  "E_adj_within_100ms": 93.47826086956522,
+  "E_ctrl_within_100ms": 86.95652173913044,
+  "phrase_offset_spread_ms": 232.07248628152578,
+  "D_boundary_energy": 0.4749378561973572,
+  "D_control_energy": 0.47533315420150757
+ }
+]

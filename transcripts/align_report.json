@@ -1,0 +1,41 @@
+[
+ {
+  "song": "דרוש נא (1)",
+  "whisper_segments": 13,
+  "detected_phrases": 20,
+  "matched": 8,
+  "median_offset_ms": 294.99999999999636,
+  "median_abs_ms": 359.99999999999943,
+  "mean_abs_ms": 498.7499999999976,
+  "p90_abs_ms": 870.9999999999966,
+  "max_abs_ms": 920.0000000000017,
+  "within_100ms_pct": 0.0,
+  "within_300ms_pct": 37.5
+ },
+ {
+  "song": "אבי לרנר - ותהי שמחה",
+  "whisper_segments": 23,
+  "detected_phrases": 34,
+  "matched": 18,
+  "median_offset_ms": 545.0000000000089,
+  "median_abs_ms": 765.0000000000024,
+  "mean_abs_ms": 863.3333333333333,
+  "p90_abs_ms": 1695.000000000001,
+  "max_abs_ms": 1839.999999999989,
+  "within_100ms_pct": 5.555555555555555,
+  "within_300ms_pct": 16.666666666666664
+ },
+ {
+  "song": "שי וינר - כנפי השכינה",
+  "whisper_segments": 17,
+  "detected_phrases": 128,
+  "matched": 17,
+  "median_offset_ms": -179.9999999999926,
+  "median_abs_ms": 460.00000000000085,
+  "mean_abs_ms": 575.8823529411754,
+  "p90_abs_ms": 1121.999999999997,
+  "max_abs_ms": 1769.9999999999995,
+  "within_100ms_pct": 0.0,
+  "within_300ms_pct": 35.294117647058826
+ }
+]
