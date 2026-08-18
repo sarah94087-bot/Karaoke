@@ -4,13 +4,16 @@ AudioWorklet only exists in a secure context. Over plain http:// to a LAN IP the
 phone gets `ctx.audioWorklet === undefined` and the page cannot run at all, so the
 phone test needs TLS even though everything is local.
 """
+
 import http.server
-import ssl
-import socket
 import os
+import socket
+import ssl
 
 PORT = 8443
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# Serve the project root, not this script's directory: the prototype pages under
+# research/prototype/ reach up to ../../output and ../../transcripts.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -38,8 +41,7 @@ def lan_ip():
 
 
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-ctx.load_cert_chain(os.path.join(ROOT, "certs", "cert.pem"),
-                    os.path.join(ROOT, "certs", "key.pem"))
+ctx.load_cert_chain(os.path.join(ROOT, "certs", "cert.pem"), os.path.join(ROOT, "certs", "key.pem"))
 
 httpd = http.server.HTTPServer(("0.0.0.0", PORT), Handler)
 httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
@@ -48,7 +50,7 @@ ip = lan_ip()
 print("=" * 58)
 print("  HTTPS server running")
 print("  On the phone open:")
-print("     https://%s:%d/prototype/mobile.html" % (ip, PORT))
+print("     https://%s:%d/research/prototype/mobile.html" % (ip, PORT))
 print()
 print("  The certificate is self-signed, so the phone will warn once.")
 print("  Choose Advanced -> Proceed. This is your own machine.")

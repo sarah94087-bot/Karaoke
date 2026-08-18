@@ -18,6 +18,7 @@ removed - the words still land on the syllable attacks in the audio. If they do,
 word-level highlighting is usable with a per-song nudge. If they do not, word
 timings carry no information beyond the line they belong to.
 """
+
 import io
 import json
 import os
@@ -26,7 +27,7 @@ import wave
 
 import numpy as np
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 SONGS = [
     "דרוש נא (1)",
@@ -53,7 +54,7 @@ def read_mono(path):
 def envelope(x, sr):
     hop = int(sr * FRAME_S)
     nf = len(x) // hop
-    return np.sqrt((x[:nf * hop].reshape(nf, hop) ** 2).mean(axis=1))
+    return np.sqrt((x[: nf * hop].reshape(nf, hop) ** 2).mean(axis=1))
 
 
 def phrases(env):
@@ -72,8 +73,7 @@ def phrases(env):
             merged[-1] = (merged[-1][0], e)
         else:
             merged.append((s, e))
-    return [(s * FRAME_S, e * FRAME_S) for s, e in merged
-            if (e - s) * FRAME_S >= MIN_PHRASE_S]
+    return [(s * FRAME_S, e * FRAME_S) for s, e in merged if (e - s) * FRAME_S >= MIN_PHRASE_S]
 
 
 def attacks(env):
@@ -83,10 +83,9 @@ def attacks(env):
     if d.max() <= 0:
         return np.array([])
     thr = np.percentile(d[d > 0], 70)
-    idx = [i for i in range(1, len(d) - 1)
-           if d[i] > thr and d[i] >= d[i - 1] and d[i] >= d[i + 1]]
+    idx = [i for i in range(1, len(d) - 1) if d[i] > thr and d[i] >= d[i - 1] and d[i] >= d[i + 1]]
     out = []
-    for i in idx:                     # thin out attacks closer than 80 ms
+    for i in idx:  # thin out attacks closer than 80 ms
         if not out or (i - out[-1]) * FRAME_S > 0.08:
             out.append(i)
     return np.array(out) * FRAME_S
@@ -105,8 +104,7 @@ for song in SONGS:
     env = envelope(x, sr)
     ph = phrases(env)
     att = attacks(env)
-    words = [w for s in data["segments"] for w in (s.get("words") or [])
-             if w["end"] > w["start"]]
+    words = [w for s in data["segments"] for w in (s.get("words") or []) if w["end"] > w["start"]]
     if not words or not ph or not len(att):
         continue
 
@@ -159,14 +157,18 @@ for song in SONGS:
         bounds += b
         if b:
             ctrl_pts += list(RNG.uniform(p0, p1, size=len(b)))
-    ei = lambda t: env[int(round(t / FRAME_S))] / peak \
-        if 0 <= int(round(t / FRAME_S)) < len(env) else np.nan
+    ei = lambda t: (
+        env[int(round(t / FRAME_S))] / peak if 0 <= int(round(t / FRAME_S)) < len(env) else np.nan
+    )
     e_b = np.array([ei(t) for t in bounds]) if bounds else np.array([np.nan])
     e_c = np.array([ei(t) for t in ctrl_pts]) if ctrl_pts else np.array([np.nan])
 
     res = {
-        "song": song, "words": len(words), "phrases": len(ph),
-        "attacks": int(len(att)), "phrases_used": used_phrases,
+        "song": song,
+        "words": len(words),
+        "phrases": len(ph),
+        "attacks": int(len(att)),
+        "phrases_used": used_phrases,
         "E_raw_median_ms": float(np.nanmedian(raw_err)) * 1000,
         "E_adj_median_ms": float(np.nanmedian(adj_err)) * 1000,
         "E_ctrl_median_ms": float(np.nanmedian(ctrl_err)) * 1000,
@@ -181,21 +183,32 @@ for song in SONGS:
     print("=" * 66)
     print(song)
     print("=" * 66)
-    print("  %d מילים · %d משפטים (%d שימשו) · %d אטאקים"
-          % (res["words"], res["phrases"], res["phrases_used"], res["attacks"]))
-    print("  E · שגיאה למול אטאק — גולמי %.0f ms → אחרי תיקון היסט %.0f ms"
-          % (res["E_raw_median_ms"], res["E_adj_median_ms"]))
-    print("      ביקורת (מילים אקראיות באותם משפטים): %.0f ms"
-          % res["E_ctrl_median_ms"])
-    print("      בתוך 100ms — אמיתי %.0f%% · ביקורת %.0f%%"
-          % (res["E_adj_within_100ms"], res["E_ctrl_within_100ms"]))
+    print(
+        "  %d מילים · %d משפטים (%d שימשו) · %d אטאקים"
+        % (res["words"], res["phrases"], res["phrases_used"], res["attacks"])
+    )
+    print(
+        "  E · שגיאה למול אטאק — גולמי %.0f ms → אחרי תיקון היסט %.0f ms"
+        % (res["E_raw_median_ms"], res["E_adj_median_ms"])
+    )
+    print("      ביקורת (מילים אקראיות באותם משפטים): %.0f ms" % res["E_ctrl_median_ms"])
+    print(
+        "      בתוך 100ms — אמיתי %.0f%% · ביקורת %.0f%%"
+        % (res["E_adj_within_100ms"], res["E_ctrl_within_100ms"])
+    )
     print("  פיזור ההיסט בין משפטים: %.0f ms" % res["phrase_offset_spread_ms"])
-    print("  D · אנרגיה בגבול %.3f מול ביקורת באותו משפט %.3f"
-          % (res["D_boundary_energy"], res["D_control_energy"]))
+    print(
+        "  D · אנרגיה בגבול %.3f מול ביקורת באותו משפט %.3f"
+        % (res["D_boundary_energy"], res["D_control_energy"])
+    )
     print()
 
-json.dump(summary, open(os.path.join(OUT_DIR, "word_align_report.json"), "w",
-                        encoding="utf-8"), ensure_ascii=False, indent=1)
+json.dump(
+    summary,
+    open(os.path.join(OUT_DIR, "word_align_report.json"), "w", encoding="utf-8"),
+    ensure_ascii=False,
+    indent=1,
+)
 
 if summary:
     adj = np.mean([r["E_adj_median_ms"] for r in summary])
@@ -215,6 +228,7 @@ if summary:
         v = "עובד חלקית"
     else:
         v = "לא עובד"
-    print("  יתרון על פני אקראי: %.0f ms טוב יותר, %+.0f נק' אחוז בתוך 100ms"
-          % (better, hit - chit))
+    print(
+        "  יתרון על פני אקראי: %.0f ms טוב יותר, %+.0f נק' אחוז בתוך 100ms" % (better, hit - chit)
+    )
     print("  פסק דין: %s" % v)

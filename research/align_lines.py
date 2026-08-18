@@ -14,6 +14,7 @@ opened mid-phrase the answer was simply the window edge, and every line reported
 exactly -2000 ms. Detecting whole phrases first and then matching to their
 onsets removes that failure mode.
 """
+
 import io
 import json
 import os
@@ -22,7 +23,7 @@ import wave
 
 import numpy as np
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 SONGS = [
     "דרוש נא (1)",
@@ -33,9 +34,9 @@ STEM_DIR = "output/htdemucs"
 OUT_DIR = "transcripts"
 
 FRAME_S = 0.01
-MIN_PHRASE_S = 0.20       # ignore blips shorter than this
-MERGE_GAP_S = 0.30        # breaths shorter than this do not split a phrase
-MATCH_WINDOW_S = 2.0      # how far a Whisper start may be from its real onset
+MIN_PHRASE_S = 0.20  # ignore blips shorter than this
+MERGE_GAP_S = 0.30  # breaths shorter than this do not split a phrase
+MATCH_WINDOW_S = 2.0  # how far a Whisper start may be from its real onset
 
 
 def read_mono(path):
@@ -52,7 +53,7 @@ def phrases(x, sr):
     """Start/end times of contiguous sung phrases in the isolated vocal stem."""
     hop = int(sr * FRAME_S)
     nf = len(x) // hop
-    env = np.sqrt((x[:nf * hop].reshape(nf, hop) ** 2).mean(axis=1))
+    env = np.sqrt((x[: nf * hop].reshape(nf, hop) ** 2).mean(axis=1))
     floor = max(np.percentile(env, 20) * 4, env.max() * 0.02)
 
     voiced = env > floor
@@ -64,8 +65,7 @@ def phrases(x, sr):
     if voiced[-1]:
         ends = ends + [nf]
 
-    regs = [(s, e) for s, e in zip(starts, ends)
-            if (e - s) * FRAME_S >= MIN_PHRASE_S]
+    regs = [(s, e) for s, e in zip(starts, ends) if (e - s) * FRAME_S >= MIN_PHRASE_S]
     merged = []
     for s, e in regs:
         if merged and (s - merged[-1][1]) * FRAME_S < MERGE_GAP_S:
@@ -121,19 +121,27 @@ for song in SONGS:
             deltas.append(d)
             used.add(int(np.where(onsets == near)[0][0]))
         snapped.append((near if matched else s["start"], s["text"].strip()))
-        rows.append({"whisper_start": s["start"], "onset": near,
-                     "delta_ms": None if d is None else round(d * 1000, 1),
-                     "matched": matched, "text": s["text"].strip()})
+        rows.append(
+            {
+                "whisper_start": s["start"],
+                "onset": near,
+                "delta_ms": None if d is None else round(d * 1000, 1),
+                "matched": matched,
+                "text": s["text"].strip(),
+            }
+        )
 
     # keep line starts strictly increasing so the lyric file stays playable
     for i in range(1, len(snapped)):
         if snapped[i][0] <= snapped[i - 1][0]:
             snapped[i] = (snapped[i - 1][0] + 0.05, snapped[i][1])
 
-    write_lrc(os.path.join(OUT_DIR, "%s.raw.lrc" % song), song,
-              [(s["start"], s["text"].strip()) for s in segs])
-    write_lrc(os.path.join(OUT_DIR, "%s.aligned.lrc" % song), song + " (aligned)",
-              snapped)
+    write_lrc(
+        os.path.join(OUT_DIR, "%s.raw.lrc" % song),
+        song,
+        [(s["start"], s["text"].strip()) for s in segs],
+    )
+    write_lrc(os.path.join(OUT_DIR, "%s.aligned.lrc" % song), song + " (aligned)", snapped)
 
     a = np.abs(deltas) if deltas else np.array([0.0])
     res = {
@@ -154,27 +162,39 @@ for song in SONGS:
     print("=" * 64)
     print(song)
     print("=" * 64)
-    print("  קטעי Whisper: %d   ·   משפטים שזוהו באודיו: %d"
-          % (res["whisper_segments"], res["detected_phrases"]))
+    print(
+        "  קטעי Whisper: %d   ·   משפטים שזוהו באודיו: %d"
+        % (res["whisper_segments"], res["detected_phrases"])
+    )
     print("  הותאמו: %d" % res["matched"])
     print("  הטיה שיטתית (חציון): %+.0f ms" % res["median_offset_ms"])
-    print("  שגיאה מוחלטת — חציון %.0f · ממוצע %.0f · p90 %.0f · מקס %.0f (ms)"
-          % (res["median_abs_ms"], res["mean_abs_ms"],
-             res["p90_abs_ms"], res["max_abs_ms"]))
-    print("  בתוך 100ms: %.0f%%   ·   בתוך 300ms: %.0f%%"
-          % (res["within_100ms_pct"], res["within_300ms_pct"]))
+    print(
+        "  שגיאה מוחלטת — חציון %.0f · ממוצע %.0f · p90 %.0f · מקס %.0f (ms)"
+        % (res["median_abs_ms"], res["mean_abs_ms"], res["p90_abs_ms"], res["max_abs_ms"])
+    )
+    print(
+        "  בתוך 100ms: %.0f%%   ·   בתוך 300ms: %.0f%%"
+        % (res["within_100ms_pct"], res["within_300ms_pct"])
+    )
     print()
 
-json.dump(results, open(os.path.join(OUT_DIR, "align_report.json"), "w",
-                        encoding="utf-8"), ensure_ascii=False, indent=1)
+json.dump(
+    results,
+    open(os.path.join(OUT_DIR, "align_report.json"), "w", encoding="utf-8"),
+    ensure_ascii=False,
+    indent=1,
+)
 
 if results:
     print("=" * 64)
     print("  יעד האפיון (T-2.6): סטייה מתחת ל-100ms.")
-    print("  שורות שעומדות בו עם תזמוני Whisper גולמיים: %.0f%% בממוצע"
-          % (sum(r["within_100ms_pct"] for r in results) / len(results)))
+    print(
+        "  שורות שעומדות בו עם תזמוני Whisper גולמיים: %.0f%% בממוצע"
+        % (sum(r["within_100ms_pct"] for r in results) / len(results))
+    )
     print()
-    print("  קטעי Whisper מול משפטים שזוהו: %d מול %d."
-          % (sum(r["whisper_segments"] for r in results),
-             sum(r["detected_phrases"] for r in results)))
+    print(
+        "  קטעי Whisper מול משפטים שזוהו: %d מול %d."
+        % (sum(r["whisper_segments"] for r in results), sum(r["detected_phrases"] for r in results))
+    )
     print("  קטע של Whisper אינו שורת קריוקי - הוא מאחד כמה משפטים מושרים.")

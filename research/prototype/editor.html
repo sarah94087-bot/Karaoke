@@ -137,9 +137,9 @@ document.getElementById("songSel").onchange = e=>load(SONGS[+e.target.value]);
 async function load(name){
   song = name;
   stopAudio();
-  const res = await fetch("../transcripts/" + encodeURIComponent(name) + ".vocals.json");
+  const res = await fetch("../../transcripts/" + encodeURIComponent(name) + ".vocals.json");
   data = await res.json();
-  au.src = "../output/htdemucs/" + encodeURIComponent(name) + "/vocals.mp3";
+  au.src = "../../output/htdemucs/" + encodeURIComponent(name) + "/vocals.mp3";
   original = data.segments.map(s=>s.text);
   render();
   resetTimer();

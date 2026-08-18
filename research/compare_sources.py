@@ -15,6 +15,8 @@ measured directly. Instead we use signals that do not need a reference:
 The disagreement rate is the honest headline: it is the amount of text a human
 would have to arbitrate if we only trusted one source.
 """
+
+import collections
 import difflib
 import glob
 import io
@@ -22,9 +24,8 @@ import json
 import os
 import re
 import sys
-import collections
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 OUT = "transcripts"
 
@@ -55,8 +56,9 @@ def norm(w):
     return re.sub(r"[^֐-׿A-Za-z]", "", w)
 
 
-songs = sorted({os.path.basename(p).rsplit(".", 3)[0]
-                for p in glob.glob(os.path.join(OUT, "*.vocals.json"))})
+songs = sorted(
+    {os.path.basename(p).rsplit(".", 3)[0] for p in glob.glob(os.path.join(OUT, "*.vocals.json"))}
+)
 
 rows = []
 for song in songs:
@@ -108,8 +110,7 @@ if rows:
     avg_cov = sum(r["original"]["coverage"] for r in rows) / len(rows)
     print("  ערוץ השירה ניצח ב-%d מתוך %d שירים" % (v_wins, len(rows)))
     print("  כיסוי ממוצע של התערובת: %.0f%% מהמילים של ערוץ השירה" % avg_cov)
-    print("  אי-הסכמה ממוצעת: %.1f%%" %
-          (sum(r["disagree_pct"] for r in rows) / len(rows)))
+    print("  אי-הסכמה ממוצעת: %.1f%%" % (sum(r["disagree_pct"] for r in rows) / len(rows)))
     print()
     if v_wins == len(rows):
         print("  D-29: ערוץ השירה מנצח בכל השירים, ולא במעט.")
@@ -117,6 +118,10 @@ if rows:
         print("  היא מספקת טקסט חלקי מוקדם, לפני שההפרדה הסתיימה.")
     else:
         print("  D-29: כל מקור מנצח לפעמים - ההרצה הכפולה מוצדקת גם על איכות.")
-    json.dump(rows, open(os.path.join(OUT, "compare_sources.json"), "w",
-                         encoding="utf-8"), ensure_ascii=False, indent=1,
-              default=lambda o: None)
+    json.dump(
+        rows,
+        open(os.path.join(OUT, "compare_sources.json"), "w", encoding="utf-8"),
+        ensure_ascii=False,
+        indent=1,
+        default=lambda o: None,
+    )

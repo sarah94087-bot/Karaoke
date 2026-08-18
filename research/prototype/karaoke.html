@@ -129,7 +129,7 @@ async function load(name){
   au.pause();
   setAudioSrc();
   if(!report){
-    try{ report = await (await fetch("../transcripts/align_report.json")).json(); }
+    try{ report = await (await fetch("../../transcripts/align_report.json")).json(); }
     catch(e){ report = []; }
   }
   await loadLrc();
@@ -139,7 +139,7 @@ async function load(name){
 function setAudioSrc(){
   const file = useVocals ? "vocals.mp3" : "original.mp3";
   const t = au.currentTime || 0;
-  au.src = "../output/htdemucs/" + encodeURIComponent(song) + "/" + file;
+  au.src = "../../output/htdemucs/" + encodeURIComponent(song) + "/" + file;
   au.addEventListener("loadedmetadata", ()=>{
     document.getElementById("dur").textContent = fmt(au.duration);
     if(t) au.currentTime = t;
@@ -148,7 +148,7 @@ function setAudioSrc(){
 
 async function loadLrc(){
   const suffix = mode === "raw" ? ".raw.lrc" : ".aligned.lrc";
-  const res = await fetch("../transcripts/" + encodeURIComponent(song) + suffix);
+  const res = await fetch("../../transcripts/" + encodeURIComponent(song) + suffix);
   lines = parseLrc(await res.text());
   document.getElementById("srcMsg").textContent =
     (mode === "raw" ? "raw" : "aligned") + " · " + lines.length + " lines";

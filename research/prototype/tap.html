@@ -172,8 +172,8 @@ async function load(name){
   song=name; taps=[]; idx=0; running=false;
   au.pause();
   const [r,a] = await Promise.all([
-    fetch("../transcripts/"+encodeURIComponent(name)+".raw.lrc").then(x=>x.text()),
-    fetch("../transcripts/"+encodeURIComponent(name)+".aligned.lrc").then(x=>x.text())
+    fetch("../../transcripts/"+encodeURIComponent(name)+".raw.lrc").then(x=>x.text()),
+    fetch("../../transcripts/"+encodeURIComponent(name)+".aligned.lrc").then(x=>x.text())
   ]);
   raw = parseLrc(r); aligned = parseLrc(a);
   setSrc();
@@ -185,7 +185,7 @@ async function load(name){
 
 function setSrc(){
   const keep = au.currentTime||0, was = !au.paused;
-  au.src = "../output/htdemucs/"+encodeURIComponent(song)+"/"+
+  au.src = "../../output/htdemucs/"+encodeURIComponent(song)+"/"+
            (useVocals?"vocals.mp3":"original.mp3");
   au.addEventListener("loadedmetadata", ()=>{
     au.playbackRate = rate;

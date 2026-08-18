@@ -1,0 +1,51 @@
+[project]
+name = "karaoke"
+version = "0.1.0"
+description = "Hebrew karaoke player — stem separation, real-time key/tempo, timed lyrics"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["core", "audio", "lyrics", "providers"]
+package-dir = { "" = "packages" }
+
+# ---------------------------------------------------------------------------
+# ruff handles both linting and formatting, so there is one tool and one config
+# instead of flake8 + isort + black.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# research/ holds the phase 0 scripts. They are kept for reproducibility but are
+# not product code, so they are linted more loosely (see per-file-ignores).
+extend-exclude = [".venv", "output", "transcripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# research/ holds the phase 0 measurement scripts. They are finished and frozen:
+# their value is that the recorded numbers can be reproduced, so they are checked
+# for correctness but not modernised for style.
+"research/*" = ["E402", "F401", "SIM", "B", "UP031", "E731", "C408"]
+"apps/gpu/*" = ["E402"]  # modal requires imports inside the remote functions
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+# Product code is checked strictly; the phase 0 research scripts are not.
+files = ["packages", "apps"]
+exclude = "(research|\\.venv)"
+
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["packages", "."]
+addopts = "-q"

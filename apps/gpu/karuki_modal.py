@@ -12,6 +12,7 @@ to the torch hub cache on first use; without a persistent volume every cold
 start would re-download them and the wake time could never meet the 15s target.
 TORCH_HOME points at the mounted volume so the download happens exactly once.
 """
+
 import time
 
 import modal
@@ -50,6 +51,7 @@ def ping():
     """T-0.3.1 — the smallest thing that proves the remote side answers."""
     import platform
     import sys
+
     return {
         "ok": True,
         "python": sys.version.split()[0],
@@ -66,21 +68,42 @@ def where_are_weights():
     the right environment variable, this reports the real paths.
     """
     import os
+
     import torch
     from demucs.pretrained import get_model
 
     before = torch.hub.get_dir()
-    get_model("htdemucs")           # forces the download
+    get_model("htdemucs")  # forces the download
 
     # A filtered os.walk found nothing, which usually means the guess about
     # extensions or locations is wrong. Search the whole filesystem by size.
     import subprocess
-    big = subprocess.run(
-        ["find", "/", "-xdev", "-type", "f", "-size", "+5M",
-         "-not", "-path", "*/site-packages/nvidia/*",
-         "-not", "-path", "*/site-packages/torch/lib/*",
-         "-printf", "%s\t%p\n"],
-        capture_output=True, text=True).stdout.strip().split("\n")
+
+    big = (
+        subprocess.run(
+            [
+                "find",
+                "/",
+                "-xdev",
+                "-type",
+                "f",
+                "-size",
+                "+5M",
+                "-not",
+                "-path",
+                "*/site-packages/nvidia/*",
+                "-not",
+                "-path",
+                "*/site-packages/torch/lib/*",
+                "-printf",
+                "%s\t%p\n",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .split("\n")
+    )
     rows = []
     for line in big:
         if not line.strip():
@@ -90,11 +113,13 @@ def where_are_weights():
     rows.sort(reverse=True)
 
     cache.commit()
-    return {"TORCH_HOME": os.environ.get("TORCH_HOME"),
-            "torch_hub_dir": before,
-            "hub_exists": os.path.isdir(before),
-            "hub_contents": os.listdir(before) if os.path.isdir(before) else None,
-            "largest_files": rows[:15]}
+    return {
+        "TORCH_HOME": os.environ.get("TORCH_HOME"),
+        "torch_hub_dir": before,
+        "hub_exists": os.path.isdir(before),
+        "hub_contents": os.listdir(before) if os.path.isdir(before) else None,
+        "largest_files": rows[:15],
+    }
 
 
 @app.function(image=image, gpu="T4", volumes={"/cache": cache}, timeout=900)
@@ -107,6 +132,7 @@ def verify_cache():
     and a failure proves it is not.
     """
     import os
+
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
@@ -114,19 +140,24 @@ def verify_cache():
     t = time.time()
     try:
         from demucs.pretrained import get_model
+
         get_model("htdemucs")
         ok, err = True, None
     except Exception as e:
-        ok, err = False, "%s: %s" % (type(e).__name__, str(e)[:200])
-    return {"loaded_offline": ok, "error": err,
-            "load_s": round(time.time() - t, 2),
-            "boot_to_call_s": round(boot_to_call, 2)}
+        ok, err = False, f"{type(e).__name__}: {str(e)[:200]}"
+    return {
+        "loaded_offline": ok,
+        "error": err,
+        "load_s": round(time.time() - t, 2),
+        "boot_to_call_s": round(boot_to_call, 2),
+    }
 
 
 @app.function(image=image, gpu="T4", volumes={"/cache": cache}, timeout=900)
 def gpu_info():
     """Confirms a GPU is actually attached before any real work is sent."""
     import torch
+
     return {
         "cuda": torch.cuda.is_available(),
         "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -141,7 +172,6 @@ def separate(filename: str, data: bytes) -> dict:
     cold = _FRESH_CONTAINER
     _FRESH_CONTAINER = False
 
-    import os
     import pathlib
     import subprocess
 
@@ -166,14 +196,20 @@ def separate(filename: str, data: bytes) -> dict:
     # the four stems are encoded concurrently instead of one after another.
     t_enc = time.time()
     import soundfile as sf
+
     procs = {}
     for name, tensor in stems.items():
         p = work / f"{name}.wav"
         sf.write(str(p), tensor.cpu().numpy().T, separator.samplerate)
         mp3 = work / f"{name}.mp3"
-        procs[name] = (mp3, subprocess.Popen(
-            ["ffmpeg", "-y", "-i", str(p), "-c:a", "libmp3lame", "-b:a", "128k", str(mp3)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        procs[name] = (
+            mp3,
+            subprocess.Popen(
+                ["ffmpeg", "-y", "-i", str(p), "-c:a", "libmp3lame", "-b:a", "128k", str(mp3)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ),
+        )
     out = {}
     for name, (mp3, proc) in procs.items():
         if proc.wait() != 0:

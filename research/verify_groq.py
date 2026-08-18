@@ -11,6 +11,7 @@ Quality: local Whisper large-v3 ran at 0.25x-0.56x realtime and is the slowest
 step in the whole pipeline (T-0.4.1). If Groq's hosted large-v3 returns
 comparable Hebrew text far faster, D-27 is settled on evidence.
 """
+
 import difflib
 import io
 import json
@@ -26,6 +27,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 # certificate in certificate chain". The Windows certificate store already
 # trusts that root, so use it instead of disabling verification.
 import truststore
+
 truststore.inject_into_ssl()
 
 import requests
@@ -78,8 +80,10 @@ data = r.json()
 text = data.get("text", "").strip()
 dur = data.get("duration") or 0
 print()
-print("  משך האודיו: %.1fs · זמן תמלול: %.1fs · יחס: %.1f× מזמן אמת"
-      % (dur, elapsed, (dur / elapsed) if elapsed else 0))
+print(
+    "  משך האודיו: %.1fs · זמן תמלול: %.1fs · יחס: %.1f× מזמן אמת"
+    % (dur, elapsed, (dur / elapsed) if elapsed else 0)
+)
 
 # --- how it compares with the local run ---
 print()
@@ -100,8 +104,10 @@ if os.path.isfile(LOCAL):
     local_secs = local.get("processing_sec", 0)
     print("  מילים — מקומי %d · Groq %d" % (len(local_words), len(remote_words)))
     print("  הסכמה בין השניים: %.0f%%" % agree)
-    print("  זמן — מקומי %.0fs · Groq %.1fs  → מהיר פי %.0f"
-          % (local_secs, elapsed, local_secs / elapsed if elapsed else 0))
+    print(
+        "  זמן — מקומי %.0fs · Groq %.1fs  → מהיר פי %.0f"
+        % (local_secs, elapsed, local_secs / elapsed if elapsed else 0)
+    )
 else:
     print("  (לא נמצא תמלול מקומי להשוואה)")
 
@@ -116,13 +122,17 @@ if segs and dur:
     covered = sum(s["end"] - s["start"] for s in segs)
     first, last = segs[0]["start"], segs[-1]["end"]
     print()
-    print("  כיסוי זמן — Groq: %.0f%% (%d קטעים, %.1fs עד %.1fs)"
-          % (100 * covered / dur, len(segs), first, last))
+    print(
+        "  כיסוי זמן — Groq: %.0f%% (%d קטעים, %.1fs עד %.1fs)"
+        % (100 * covered / dur, len(segs), first, last)
+    )
     if os.path.isfile(LOCAL):
         lsegs = local["segments"]
         lcov = sum(s["end"] - s["start"] for s in lsegs)
-        print("  כיסוי זמן — מקומי: %.0f%% (%d קטעים, %.1fs עד %.1fs)"
-              % (100 * lcov / dur, len(lsegs), lsegs[0]["start"], lsegs[-1]["end"]))
+        print(
+            "  כיסוי זמן — מקומי: %.0f%% (%d קטעים, %.1fs עד %.1fs)"
+            % (100 * lcov / dur, len(lsegs), lsegs[0]["start"], lsegs[-1]["end"])
+        )
 
     rep = [s["text"].strip() for s in segs]
     dupes = len(rep) - len(set(rep))
@@ -131,11 +141,19 @@ if segs and dur:
 os.makedirs("transcripts", exist_ok=True)
 out = os.path.join("transcripts", "%s.groq.txt" % SONG)
 open(out, "w", encoding="utf-8").write(text + "\n")
-json.dump({"quotas": limits, "elapsed_s": round(elapsed, 2),
-           "audio_s": dur, "model": MODEL, "text": text,
-           "segments": data.get("segments")},
-          open(os.path.join("transcripts", "groq_report.json"), "w", encoding="utf-8"),
-          ensure_ascii=False, indent=1)
+json.dump(
+    {
+        "quotas": limits,
+        "elapsed_s": round(elapsed, 2),
+        "audio_s": dur,
+        "model": MODEL,
+        "text": text,
+        "segments": data.get("segments"),
+    },
+    open(os.path.join("transcripts", "groq_report.json"), "w", encoding="utf-8"),
+    ensure_ascii=False,
+    indent=1,
+)
 
 print()
 print("  -> %s" % out)
