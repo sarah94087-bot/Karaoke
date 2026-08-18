@@ -1,0 +1,28 @@
+# The build context is the repository root, so this file is what keeps the
+# ~1GB of phase 0 audio out of the image.
+.git/
+.venv/
+__pycache__/
+*.pyc
+
+# audio and phase 0 output
+input/
+output/
+transcripts/
+research/
+
+# not part of the API image
+apps/web/
+apps/gpu/
+node_modules/
+.next/
+
+# secrets and local state
+.env
+.env.*
+!.env.example
+certs/
+.claude/
+
+docs/
+tests/

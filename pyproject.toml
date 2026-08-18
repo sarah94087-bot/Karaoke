@@ -20,6 +20,7 @@ dev = [
     "mypy>=1.11",
     "pytest>=8",
     "httpx>=0.28",       # starlette's TestClient transport
+    "pyyaml>=6",         # tests parse the compose file
 ]
 
 [tool.setuptools]

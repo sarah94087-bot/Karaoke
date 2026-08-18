@@ -30,7 +30,13 @@ Run every check (lint, format, types, tests):
 
 `--fix` applies lint fixes and reformats. CI runs this same file.
 
-Run the API (docs at `/docs`, health at `/system/health`):
+Bring up the local environment (API + Postgres):
+
+```
+docker compose -f infra\docker\compose.yaml up
+```
+
+Run the API alone, without Docker (docs at `/docs`, health at `/system/health`):
 
 ```
 .venv\Scripts\python.exe -m uvicorn apps.api.main:app --reload --port 8000
@@ -77,8 +83,17 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 (`T-0.2.5`, the phone test — everything for it is built and waiting).
 
-Phase 1 in progress. `T-1.1` and `T-1.2` done. Next is `T-1.3`: Postgres in
-Docker Compose, one command bringing up API + DB.
+Phase 1 in progress. `T-1.1`, `T-1.2` and `T-1.3` done. Next is `T-1.4`: models
+and migrations for songs, stems, jobs.
+
+Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
+machine PATH without refreshing an already-open shell. If `docker` is "not
+recognized", the session's PATH is stale — reopen the terminal, or in
+PowerShell:
+
+```
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+```
 
 From `T-1.2`, worth knowing before touching `apps/api`:
 
@@ -93,8 +108,27 @@ From `T-1.2`, worth knowing before touching `apps/api`:
 - Errors are `{"error": {"code", "message"}, "request_id"}`. `code` is what the
   web app maps to Hebrew text.
 - Dependencies are declared in `pyproject.toml` under `[project.optional-dependencies]`
-  but not installed from there — the venv was built by hand in phase 0. The
-  `api` group is what the `T-1.3` Dockerfile should install.
+  but the local venv was built by hand in phase 0 and is not installed from
+  them. The image generates its requirements from the `api` group at build time
+  via `infra/docker/requirements.py`, so there is no second dependency list to
+  drift.
+
+From `T-1.3`:
+
+- The compose file lives at `infra/docker/compose.yaml`; the build context is
+  the repository root, because the image needs `packages/` as well as `apps/`.
+- `api` waits on `db`'s healthcheck (`service_healthy`), not merely on the
+  container starting — otherwise the first connection races Postgres's init.
+- Postgres is pinned to `17-alpine`. It should match whatever hosted Postgres
+  `D-15` lands on; a mismatch discovered at deploy time is the expensive kind.
+- The container `HEALTHCHECK` uses the unprefixed `/system/health` on purpose.
+- Verified end to end on 2026-08-18: image builds (239MB), both containers go
+  `healthy`, the API reaches `db:5432`, Postgres reports 17.11, and a table
+  survives `down` + `up` on the `db_data` volume.
+- The image would not build at first: the dependency extraction was a
+  multi-line `python -c`, and Docker joins continuations with a leading space,
+  which Python rejects as an unexpected indent. That is why it is a file,
+  `infra/docker/requirements.py`, and not a one-liner.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

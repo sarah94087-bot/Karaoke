@@ -1,0 +1,62 @@
+# Local development environment (chapter 10): API + Postgres, one command.
+#
+#   docker compose -f infra/docker/compose.yaml up
+#
+# Production is a single hosted environment and does not use this file.
+name: karuki
+
+services:
+  db:
+    image: postgres:17-alpine
+    # Pinned to a minor-agnostic tag on purpose: the version has to match what
+    # the hosted Postgres runs in phase 3 (D-15 is still open), and finding out
+    # about a mismatch at deploy time is the expensive way to find out.
+    environment:
+      POSTGRES_USER: karuki
+      POSTGRES_PASSWORD: karuki
+      POSTGRES_DB: karuki
+      # Local-only credentials, and they stay local: nothing in this file is a
+      # secret, which is why it is safe to commit.
+    ports:
+      # Exposed so psql and the migration tooling in T-1.4 can reach it from the
+      # host without going through the api container.
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      # `api` waits on this, so "up" means genuinely ready, not merely started.
+      test: ["CMD-SHELL", "pg_isready -U karuki -d karuki"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      KARUKI_ENV: local
+      KARUKI_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+      DATABASE_URL: postgresql://karuki:karuki@db:5432/karuki
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mounted for reload. The image still COPYs the code so that the same
+      # Dockerfile builds a self-contained image for deployment.
+      - ../../apps/api:/app/apps/api:ro
+      - ../../packages:/app/packages:ro
+    command:
+      - uvicorn
+      - apps.api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+
+volumes:
+  db_data:

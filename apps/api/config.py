@@ -31,6 +31,12 @@ class Settings:
         )
     )
 
+    # Set by docker compose; unset when running uvicorn straight off the venv.
+    # Nothing reads it yet - the models and migrations arrive in T-1.4 - but the
+    # compose file wires it now so "one command brings up API + DB" means the
+    # API can actually see the DB.
+    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
+
     @property
     def is_local(self) -> bool:
         return self.environment == "local"
