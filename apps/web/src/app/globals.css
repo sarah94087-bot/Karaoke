@@ -1,0 +1,75 @@
+/*
+ * Written in logical properties throughout: `inline-start` rather than `left`,
+ * `padding-inline` rather than `padding-left/right`.
+ *
+ * This is the whole practical content of "RTL by default". A stylesheet in
+ * left/right works in Hebrew only until the first time something is aligned,
+ * and then it needs fixing screen by screen. A stylesheet in logical properties
+ * is correct in both directions without a single conditional.
+ */
+
+:root {
+  --bg: #10101a;
+  --surface: #1a1a28;
+  --text: #f2f2f7;
+  --muted: #a0a0b4;
+  --accent: #7c5cff;
+  --radius: 12px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  /* Hebrew first: the system Hebrew faces come before the Latin fallbacks, or
+     a browser will render Hebrew in whatever it finds and the result is
+     noticeably worse. */
+  font-family: "Segoe UI", "Arial Hebrew", "Noto Sans Hebrew", system-ui, sans-serif;
+  line-height: 1.6;
+  min-block-size: 100dvb;
+}
+
+main {
+  max-inline-size: 44rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+  padding-block: 4rem;
+}
+
+h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+  margin-block: 0 0.5rem;
+}
+
+.tagline {
+  color: var(--muted);
+  margin-block: 0 2.5rem;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  /* The accent sits on the side the text starts from, whichever that is. */
+  border-inline-start: 3px solid var(--accent);
+}
+
+.card p {
+  margin-block: 0 1rem;
+}
+
+.card p:last-child {
+  margin-block-end: 0;
+  color: var(--muted);
+}

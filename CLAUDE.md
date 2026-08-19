@@ -43,6 +43,14 @@ Use the module, **not** `uvicorn` directly — see the psycopg note below:
 .venv\Scripts\python.exe -m apps.api --port 8000
 ```
 
+Run the web app (Hebrew at `/he`, English at `/en`):
+
+```
+cd apps\web
+npm install
+npm run dev
+```
+
 Serve the prototypes locally:
 
 ```
@@ -289,6 +297,31 @@ From `T-1.8`:
   nothing runs between them yet; D-28's gap opens up when transcription and
   alignment land in phase 2.
 - `GET /jobs/{id}` stays as the fallback for a client that cannot use SSE.
+
+From `T-1.9`:
+
+- `apps/web` is Next.js 16 (App Router) scaffolded by hand rather than by
+  `create-next-app`: fewer files, and each one deliberate. No Tailwind, no
+  ESLint — the dependency surface stays thin, and `tsc --noEmit` covers types.
+- **RTL is the default, not a mode.** `dir` comes from the locale in
+  `[locale]/layout.tsx`, and `globals.css` is written entirely in logical
+  properties (`margin-inline`, `border-inline-start`). A stylesheet in
+  left/right needs fixing screen by screen later; one in logical properties
+  never needs fixing at all.
+- Two dictionaries exist (`he`, `en`) so the structure is a real one. `he` is
+  the default and `/` redirects to `/he`. `Dictionary` is typed from the Hebrew
+  file, so a key added there and forgotten in English is a type error.
+- **`tests/test_translations.py` is the test that makes the `code` field from
+  `T-1.2` worth having.** It greps the Python source for every `ApiError`,
+  `PipelineError` and `AudioError` code and fails if any lacks Hebrew text. Same
+  for every `JobStep` and `JobState`. Add a code, add a translation.
+- `scripts/check.py` now also runs the web typecheck and tests, because "one
+  command runs every check" was `T-1.1`'s acceptance criterion and two commands
+  start diverging immediately. They **skip**, not fail, when `node_modules` is
+  absent.
+- Dictionary parity is checked with `node --test` — built in, no test framework.
+- Windows trap, again: `new URL(..., import.meta.url).pathname` yields
+  `/C:/Users/...`. Use `fileURLToPath`.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

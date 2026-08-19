@@ -1,0 +1,55 @@
+{
+  "app": {
+    "name": "karuki",
+    "tagline": "Upload a song, get separated stems, and sing over the backing track"
+  },
+  "home": {
+    "title": "Hello",
+    "intro": "Under construction. The server side already works: a song can be uploaded, normalised, separated into four stems, and its progress is streamed live.",
+    "next": "Screens still to come: library, upload, and the player."
+  },
+  "job": {
+    "state": {
+      "queued": "Queued",
+      "running": "Processing",
+      "ready": "Ready",
+      "failed": "Failed"
+    },
+    "step": {
+      "ingesting": "Reading the file",
+      "separating": "Separating stems",
+      "transcribing_mix": "Transcribing the song",
+      "transcribing_vocals": "Transcribing the vocals",
+      "encoding": "Encoding and uploading",
+      "aligning": "Syncing the lyrics"
+    },
+    "playable": "You can start singing",
+    "playableHint": "The lyrics are still loading, but the player is ready",
+    "retry": "Try again"
+  },
+  "errors": {
+    "unsupported_format": "That file type is not supported. Try MP3, WAV, M4A, FLAC, OGG or OPUS.",
+    "file_too_large": "The file is too large.",
+    "empty_file": "The file is empty.",
+    "unreadable_audio": "The file could not be read as audio. It may be damaged.",
+    "no_audio_stream": "The file has no audio track.",
+    "unknown_duration": "The length of the file could not be determined.",
+    "empty_audio": "The file contains no audio.",
+    "song_too_long": "The song is longer than 8 minutes. Try a shorter excerpt.",
+    "normalisation_failed": "The file could not be converted. Try another format.",
+    "audio_tooling_missing": "Processing is unavailable right now. That is our problem, not your file's.",
+    "not_ingested": "The song's file is missing. Try uploading it again.",
+    "separation_failed": "Separating the stems failed. You can try again.",
+    "separation_unavailable": "Separation is unavailable right now. That is our problem, not your file's.",
+    "interrupted": "Processing stopped part way through. You can start it again.",
+    "job_not_found": "That job was not found.",
+    "job_not_retryable": "That job cannot be run again.",
+    "song_not_found": "That song was not found.",
+    "database_unavailable": "The service is unavailable right now. Try again in a moment.",
+    "storage_unavailable": "Storage is unavailable right now. Try again in a moment.",
+    "processing_unavailable": "Processing cannot start right now. Try again in a moment.",
+    "invalid_request": "The request was not valid.",
+    "internal_error": "Something went wrong on our side. You can try again.",
+    "unknown": "Something went wrong. You can try again."
+  }
+}
