@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { Dictionary } from "@/i18n";
 import type { LibrarySong } from "@/lib/api";
 import { errorText, formatDuration, stateLabel } from "@/lib/song";
@@ -11,7 +13,15 @@ import { errorText, formatDuration, stateLabel } from "@/lib/song";
  * wait bearable.
  */
 
-export function SongRow({ song, t }: { song: LibrarySong; t: Dictionary }) {
+export function SongRow({
+  song,
+  t,
+  locale,
+}: {
+  song: LibrarySong;
+  t: Dictionary;
+  locale: string;
+}) {
   const length = formatDuration(song.duration_sec);
   const failed = song.job?.state === "failed";
   const running = song.job?.state === "running" || song.job?.state === "queued";
@@ -19,7 +29,16 @@ export function SongRow({ song, t }: { song: LibrarySong; t: Dictionary }) {
   return (
     <li className="song" data-state={song.job?.state ?? song.status}>
       <div className="song-main">
-        <span className="song-title">{song.title}</span>
+        {song.job === null ? (
+          <span className="song-title">{song.title}</span>
+        ) : (
+          // A song being processed has somewhere to go: the progress screen.
+          // Without this the library is a dead end while the work is happening,
+          // which is exactly when a user most wants to look at it.
+          <Link className="song-title" href={`/${locale}/jobs/${song.job.id}`}>
+            {song.title}
+          </Link>
+        )}
         {song.artist ? <span className="song-artist">{song.artist}</span> : null}
         {length ? <span className="song-duration">{length}</span> : null}
       </div>

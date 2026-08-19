@@ -345,5 +345,26 @@ From `T-1.10`:
   tested. Node 24 runs `.ts` directly by stripping types, so `node --test` needs
   no build step and no framework.
 
+From `T-1.11`:
+
+- `/[locale]/upload` and `/[locale]/jobs/[jobId]`. These are the first **client**
+  components: one holds a file, the other holds an open connection.
+- The file goes **straight from the browser to the API**, not through Next.
+  Chapter 6 eventually wants a signed URL with no API in the path at all;
+  routing 30MB through a Node server first would be a step away from that.
+- The progress screen is SSE with **polling as a real fallback**, not decoration:
+  `text/event-stream` is the first thing a corporate proxy breaks, and a bar
+  that silently stops looks exactly like a job that hung. Verified by replacing
+  `window.EventSource` with one that errors immediately — the screen showed
+  "מתחבר מחדש…" and switched to polling `GET /jobs/{id}`.
+- The first job state is fetched **on the server** so the page arrives with
+  something on it, rather than a blank frame before the first SSE message.
+- A library row for a song with a job links to its progress screen. Without it
+  the library is a dead end exactly while the work is happening.
+- Verified in a real browser against the real API and real Demucs: chose a file,
+  uploaded, watched "מפריד ערוצים" arrive live, then "אפשר להתחיל לשיר" and
+  "השיר מוכן" — with exactly two API requests, the upload and the stream. A
+  non-audio file produced "לא הצלחנו לקרוא את הקובץ כאודיו" on the form.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

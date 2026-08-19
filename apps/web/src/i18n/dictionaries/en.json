@@ -3,6 +3,28 @@
     "name": "karuki",
     "tagline": "Upload a song, get separated stems, and sing over the backing track"
   },
+  "nav": {
+    "library": "Library",
+    "upload": "Add a song"
+  },
+  "upload": {
+    "title": "Add a song",
+    "choose": "Choose a file",
+    "hint": "Any common audio format, up to 8 minutes.",
+    "selected": "Selected",
+    "submit": "Upload",
+    "uploading": "Uploading…",
+    "alreadyExisted": "This song is already in the library, so it was not processed again."
+  },
+  "progress": {
+    "title": "Processing the song",
+    "waiting": "Starting…",
+    "done": "The song is ready",
+    "toLibrary": "To the library",
+    "sing": "You can start singing",
+    "reconnecting": "Reconnecting…",
+    "failedTitle": "Processing failed"
+  },
   "library": {
     "title": "My library",
     "empty": "No songs here yet.",

@@ -178,3 +178,123 @@ h1 {
   direction: ltr;
   unicode-bidi: isolate;
 }
+
+/* --- upload and progress -------------------------------------------------- */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-header h1 {
+  margin-block-end: 0;
+}
+
+button,
+.button-link {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.6rem 1.2rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:disabled {
+  background: #3a3a50;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.upload {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.file-field {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.file-label {
+  font-weight: 600;
+}
+
+.hint,
+.selected {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.filename {
+  color: var(--text);
+  /* A Hebrew filename is fine either way, but a Latin one inside a Hebrew
+     sentence needs isolating or its punctuation migrates. */
+  unicode-bidi: isolate;
+}
+
+.progress-screen {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.step {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.progress-large {
+  block-size: 10px;
+}
+
+.playable-banner {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  border-inline-start: 3px solid var(--accent);
+}
+
+.playable-banner strong {
+  font-size: 1.1rem;
+}
+
+.playable-banner span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.done strong {
+  color: #9fe0b8;
+  font-size: 1.1rem;
+}
+
+.card-error button {
+  margin-block-start: 0.5rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+a.song-title {
+  color: var(--text);
+  text-decoration: none;
+}
+
+a.song-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}

@@ -76,3 +76,37 @@ test("the hebrew dictionary is actually in hebrew", () => {
     assert.ok(hebrew.test(value), `${path} does not look like Hebrew: ${value}`);
   }
 });
+
+test("the screens' keys exist, so a rename breaks a test and not a screen", () => {
+  const dictionary = load("he");
+
+  // Each of these is read by a component. Without this, renaming a key shows an
+  // empty element in Hebrew and passes every other check in the project.
+  const required = [
+    "nav.upload",
+    "library.title",
+    "library.empty",
+    "upload.title",
+    "upload.choose",
+    "upload.hint",
+    "upload.submit",
+    "upload.uploading",
+    "upload.selected",
+    "progress.title",
+    "progress.waiting",
+    "progress.done",
+    "progress.sing",
+    "progress.toLibrary",
+    "progress.reconnecting",
+    "progress.failedTitle",
+    "job.playable",
+    "job.playableHint",
+    "job.retry",
+    "errors.unknown",
+  ];
+
+  for (const path of required) {
+    const value = path.split(".").reduce((node, key) => node?.[key], dictionary);
+    assert.equal(typeof value, "string", `he.${path} is missing`);
+  }
+});

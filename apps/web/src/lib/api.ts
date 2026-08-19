@@ -99,6 +99,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface JobStatus {
+  id: string;
+  song_id: string;
+  state: JobState;
+  current_step: JobStep | null;
+  progress: number;
+  is_playable: boolean;
+  error_code: string | null;
+  attempts: number;
+  gpu_seconds: number | null;
+}
+
+export interface UploadResult {
+  id: string;
+  title: string;
+  duration_sec: number;
+  status: string;
+  is_playable: boolean;
+  sample_rate: number;
+  channels: number;
+  already_existed: boolean;
+  job_id: string | null;
+}
+
 export function getLibrary(): Promise<Library> {
   return request<Library>("/songs");
+}
+
+export function getJob(jobId: string): Promise<JobStatus> {
+  return request<JobStatus>(`/jobs/${jobId}`);
+}
+
+export function retryJob(jobId: string): Promise<JobStatus> {
+  return request<JobStatus>(`/jobs/${jobId}/retry`, { method: "POST" });
+}
+
+/** The SSE endpoint. EventSource needs a URL, not a fetch. */
+export function jobEventsUrl(jobId: string): string {
+  return `${API_BASE}/jobs/${jobId}/events`;
+}
+
+export async function uploadSong(file: File): Promise<UploadResult> {
+  const body = new FormData();
+  body.append("file", file);
+  // No Content-Type header: the browser has to set it, because only the browser
+  // knows the multipart boundary it generated.
+  return request<UploadResult>("/songs/upload", { method: "POST", body });
 }

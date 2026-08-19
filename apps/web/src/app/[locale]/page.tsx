@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { SongRow } from "@/components/SongRow";
@@ -25,7 +26,12 @@ export default async function Library({ params }: { params: Promise<{ locale: st
 
     return (
       <main>
-        <h1>{t.library.title}</h1>
+        <header className="page-header">
+          <h1>{t.library.title}</h1>
+          <Link className="button-link" href={`/${locale}/upload`}>
+            {t.nav.upload}
+          </Link>
+        </header>
         <p className="tagline">{t.app.tagline}</p>
 
         {library.songs.length === 0 ? (
@@ -36,7 +42,7 @@ export default async function Library({ params }: { params: Promise<{ locale: st
         ) : (
           <ul className="songs">
             {library.songs.map((song) => (
-              <SongRow key={song.id} song={song} t={t} />
+              <SongRow key={song.id} song={song} t={t} locale={locale} />
             ))}
           </ul>
         )}
