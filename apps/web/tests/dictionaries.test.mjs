@@ -71,7 +71,7 @@ test("the hebrew dictionary is actually in hebrew", () => {
 
   // app.name may legitimately be a latin brand; everything a user reads should
   // not be English that was never translated.
-  for (const path of ["home.title", "home.intro", "job.state.ready", "errors.song_too_long"]) {
+  for (const path of ["library.title", "library.empty", "job.state.ready", "errors.song_too_long"]) {
     const value = path.split(".").reduce((node, key) => node[key], dictionary);
     assert.ok(hebrew.test(value), `${path} does not look like Hebrew: ${value}`);
   }

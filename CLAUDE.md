@@ -323,5 +323,27 @@ From `T-1.9`:
 - Windows trap, again: `new URL(..., import.meta.url).pathname` yields
   `/C:/Users/...`. Use `fileURLToPath`.
 
+From `T-1.10`:
+
+- `GET /api/v1/songs` is the library. Chapter 6 describes `GET /library`, which
+  is per-user and needs `D-16`; until auth exists this returns every song, which
+  is the same thing while there is one user. **The response shape is the one
+  `/library` will have**, so the screen does not change when the decision lands.
+- The library is the home screen (`/he`), server-rendered with
+  `dynamic = "force-dynamic"`. A cached page would show "processing" for a song
+  that finished ten minutes ago.
+- A row shows the **step**, not the word "processing" — "מפריד ערוצים" tells a
+  waiting user something. And a playable song says so *while still processing*,
+  which is the whole of `D-28`; a library that only shows `status` throws it away.
+- `apps/web/src/lib/api.ts` is the only place that knows the backend exists. A
+  network failure is turned into a code the dictionary knows, so the screen
+  shows a Hebrew sentence rather than a stack trace — verified by killing the
+  API and reloading.
+- Durations are wrapped in `direction: ltr; unicode-bidi: isolate`. Without it
+  `1:10` renders as `10:1` inside a Hebrew line.
+- Row logic lives in `src/lib/song.ts`, not in the component, so it can be
+  tested. Node 24 runs `.ts` directly by stripping types, so `node --test` needs
+  no build step and no framework.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

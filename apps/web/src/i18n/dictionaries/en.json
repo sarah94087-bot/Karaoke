@@ -3,10 +3,11 @@
     "name": "karuki",
     "tagline": "Upload a song, get separated stems, and sing over the backing track"
   },
-  "home": {
-    "title": "Hello",
-    "intro": "Under construction. The server side already works: a song can be uploaded, normalised, separated into four stems, and its progress is streamed live.",
-    "next": "Screens still to come: library, upload, and the player."
+  "library": {
+    "title": "My library",
+    "empty": "No songs here yet.",
+    "emptyHint": "Once you upload a song it will appear here with its processing state.",
+    "requestId": "Request id"
   },
   "job": {
     "state": {

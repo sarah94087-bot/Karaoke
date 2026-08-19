@@ -14,12 +14,13 @@ which way the bytes travelled.
 import hashlib
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Response, UploadFile, status
+from fastapi import APIRouter, File, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from packages.audio.normalize import (
     TARGET_CHANNELS,
@@ -30,7 +31,7 @@ from packages.audio.normalize import (
 )
 from packages.core import jobs as job_service
 from packages.core.enums import SongStatus, SourceType
-from packages.core.models import Song
+from packages.core.models import Job, Song
 from packages.providers.storage import Storage
 
 from ..config import settings
@@ -65,6 +66,40 @@ class SongCreated(BaseModel):
         description="The processing job, started immediately. Poll GET /jobs/{id}. Null when "
         "the song already existed and no new work was needed.",
     )
+
+
+class SongJob(BaseModel):
+    """The processing state of a song, as the library row needs it."""
+
+    id: uuid.UUID
+    state: str
+    current_step: str | None
+    progress: int
+    error_code: str | None
+
+
+class LibrarySong(BaseModel):
+    """One row of the library screen (chapter 8)."""
+
+    id: uuid.UUID
+    title: str
+    artist: str | None
+    duration_sec: int | None
+    status: str
+    is_playable: bool = Field(
+        description="D-28: true once the stems are encoded. A song can be playable while it is "
+        "still processing, and the library has to show that rather than just 'processing'."
+    )
+    lyrics_status: str
+    created_at: datetime
+    job: SongJob | None = Field(
+        default=None, description="The most recent job, or null for a song that never had one."
+    )
+
+
+class Library(BaseModel):
+    songs: list[LibrarySong]
+    total: int
 
 
 def _title_from(filename: str | None) -> str:
@@ -105,6 +140,69 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(CHUNK_BYTES):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@router.get(
+    "/songs",
+    response_model=Library,
+    summary="The songs in the library, newest first",
+)
+async def list_songs(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Library:
+    """Chapter 6 describes `GET /library`, which is per-user and needs D-16.
+
+    Until auth exists this returns every song, which is the same thing while
+    there is one user. The shape is the one `/library` will have, so the screen
+    that consumes it does not change when the decision lands.
+    """
+    total = await session.scalar(select(func.count()).select_from(Song)) or 0
+    songs = list(
+        await session.scalars(
+            select(Song).order_by(Song.created_at.desc()).limit(limit).offset(offset)
+        )
+    )
+
+    # One extra query rather than a correlated subquery per row. The quota is
+    # ten new songs a month, so the page is small by construction, and a
+    # DISTINCT ON would tie the query to Postgres for no measurable gain.
+    latest: dict[uuid.UUID, Job] = {}
+    if songs:
+        for job in await session.scalars(
+            select(Job)
+            .where(Job.song_id.in_([song.id for song in songs]))
+            .order_by(Job.created_at.asc())
+        ):
+            latest[job.song_id] = job  # ascending, so the last write is the newest
+
+    return Library(
+        total=total,
+        songs=[_library_song(song, latest.get(song.id)) for song in songs],
+    )
+
+
+def _library_song(song: Song, job: Job | None) -> LibrarySong:
+    return LibrarySong(
+        id=song.id,
+        title=song.title,
+        artist=song.artist,
+        duration_sec=song.duration_sec,
+        status=song.status,
+        is_playable=song.is_playable,
+        lyrics_status=song.lyrics_status,
+        created_at=song.created_at,
+        job=None
+        if job is None
+        else SongJob(
+            id=job.id,
+            state=job.state,
+            current_step=job.current_step,
+            progress=job.progress,
+            error_code=job.error_code,
+        ),
+    )
 
 
 @router.post(
