@@ -86,6 +86,9 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
   `--ssl-no-revoke`.
 - Console is cp1255. Set `PYTHONIOENCODING=utf-8` when a tool prints Unicode,
   and pass `encoding="utf-8"` to `subprocess` when filenames are Hebrew.
+- Shared code is imported as `packages.core`, `packages.audio`, … — not bare
+  `core`/`audio`. The bare names exist on PyPI, and having `packages/`
+  resolvable under two module names at once is what mypy refused to accept.
 
 ## Rules that come from the spec, not from preference
 
@@ -102,8 +105,8 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 (`T-0.2.5`, the phone test — everything for it is built and waiting).
 
-Phase 1 in progress. `T-1.1` through `T-1.4` done. Next is `T-1.5`: local file
-upload and normalisation to a uniform WAV.
+Phase 1 in progress. `T-1.1` through `T-1.5` done. Next is `T-1.6`: wrapping
+separation as an internal service — one call takes a file and returns 4 stems.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -172,6 +175,28 @@ From `T-1.4`:
 - `tests/test_migrations.py` needs a real Postgres and skips without one. It
   drops every table, so it refuses to run unless `DATABASE_URL` points at a
   local host.
+
+From `T-1.5`:
+
+- `packages/audio/normalize.py` is the only place that shells out to
+  ffmpeg/ffprobe. Everything downstream may assume 44.1kHz stereo 16-bit PCM;
+  that assumption is the whole point of normalising at the boundary.
+- ffmpeg is in the API image, in its own layer ahead of the pip layer: it is the
+  slowest part of the build and the least likely to change.
+- `POST /api/v1/songs/upload` takes the bytes **through the API**, which is not
+  what chapter 6 describes (signed URL, browser uploads straight to storage).
+  That shape needs `D-12`, which is deferred. `packages/providers/storage.py` is
+  the seam that keeps the swap cheap.
+- Storage keys are object keys (`songs/<id>/normalised.wav`), not paths, and
+  `LocalStorage` rejects any key that would escape its root. Locally the root is
+  `var/` (gitignored); in the container it is the `storage_data` volume.
+- `content_hash` is the sha256 of the **normalised** audio, so the same song as
+  mp3 and as m4a dedups to one row. A repeat upload answers `200`, not `201`,
+  with `already_existed: true`.
+- The size limit is enforced as the bytes arrive, not from `Content-Length`,
+  which is only a claim.
+- The song row is flushed, not committed, until storage has succeeded — a row
+  pointing at files that are not there is worse than no row.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

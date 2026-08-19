@@ -6,14 +6,24 @@ The factory exists so tests can build a fresh app rather than reaching into a
 module-level singleton, which matters once T-1.3 puts a database behind it.
 """
 
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from packages.core.db import create_engine, session_factory
+from packages.providers.storage import LocalStorage
 
 from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
 from .request_id import HEADER
-from .routers import system
+from .routers import songs, system
+
+log = logging.getLogger("karuki.api")
 
 DESCRIPTION = """\
 Backend for the Hebrew karaoke player: upload a song, separate it into stems,
@@ -21,6 +31,33 @@ and play it back with real-time key and tempo control and timed lyrics.
 
 Every response carries a `request_id`, echoed in the `X-Request-ID` header.
 """
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build the engine and the storage backend once, and let them go on exit.
+
+    A missing or unreachable DATABASE_URL is logged and left alone rather than
+    raising. /system/health is the keep-alive target and has to answer during a
+    database outage; endpoints that actually need data fail on their own, in
+    deps.get_session, with a code the web app can render.
+    """
+    app.state.storage = LocalStorage(Path(settings.storage_root))
+    app.state.engine = None
+    app.state.sessions = None
+
+    if settings.database_url:
+        engine = create_engine(settings.database_url)
+        app.state.engine = engine
+        app.state.sessions = session_factory(engine)
+    else:
+        log.warning("DATABASE_URL is not set; endpoints that need data will return 503")
+
+    try:
+        yield
+    finally:
+        if app.state.engine is not None:
+            await app.state.engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -33,6 +70,7 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # Order matters: CORS is added last so it runs first, and therefore still
@@ -50,6 +88,7 @@ def create_app() -> FastAPI:
     install_error_handlers(app)
 
     app.include_router(system.router, prefix=API_PREFIX)
+    app.include_router(songs.router, prefix=API_PREFIX)
     # Same handler, unprefixed and unlisted: the container HEALTHCHECK and the
     # external keep-alive cron are configured once and should not have to be
     # re-pointed when the API version prefix moves.

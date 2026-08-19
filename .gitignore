@@ -7,6 +7,10 @@ certs/
 # local tooling state
 .claude/
 
+# uploaded and derived audio written by the local storage backend (D-12 is
+# deferred; phase 1 writes to disk)
+var/
+
 # python
 .venv/
 __pycache__/

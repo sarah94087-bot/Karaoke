@@ -17,6 +17,9 @@ apps/gpu/
 node_modules/
 .next/
 
+# runtime storage; in the container this is a volume
+var/
+
 # secrets and local state
 .env
 .env.*

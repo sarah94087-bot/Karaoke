@@ -42,6 +42,7 @@ services:
       KARUKI_ENV: local
       KARUKI_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
       DATABASE_URL: postgresql://karuki:karuki@db:5432/karuki
+      KARUKI_STORAGE_ROOT: /app/var/storage
     ports:
       - "8000:8000"
     volumes:
@@ -49,6 +50,9 @@ services:
       # Dockerfile builds a self-contained image for deployment.
       - ../../apps/api:/app/apps/api:ro
       - ../../packages:/app/packages:ro
+      # Uploaded and normalised audio. A volume rather than a bind mount: it is
+      # the stand-in for the object store D-12 will pick, not source code.
+      - storage_data:/app/var
     command:
       - uvicorn
       - apps.api.main:app
@@ -60,3 +64,4 @@ services:
 
 volumes:
   db_data:
+  storage_data:

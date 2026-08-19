@@ -18,10 +18,7 @@ def test_apps_exist():
 
 
 def test_packages_are_importable():
-    import audio
-    import core
-    import lyrics
-    import providers
+    from packages import audio, core, lyrics, providers
 
     for mod in (core, audio, lyrics, providers):
         assert mod.__doc__, f"{mod.__name__} should document what belongs in it"

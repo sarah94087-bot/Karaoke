@@ -37,6 +37,19 @@ class Settings:
     # API can actually see the DB.
     database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
 
+    # D-12 is deferred to phase 3, so phase 1 stores files on disk behind
+    # packages/providers/storage.py. In the container this is a volume; in
+    # production it becomes an object store and this setting goes away.
+    storage_root: str = field(
+        default_factory=lambda: os.getenv("KARUKI_STORAGE_ROOT", "var/storage")
+    )
+    # A rejection the user can act on, rather than a request that dies halfway
+    # through. Eight minutes of 320kbps mp3 is about 19MB, so this is generous
+    # while still refusing an upload that was never going to be a song.
+    max_upload_bytes: int = field(
+        default_factory=lambda: int(os.getenv("KARUKI_MAX_UPLOAD_BYTES", str(80 * 1024 * 1024)))
+    )
+
     @property
     def is_local(self) -> bool:
         return self.environment == "local"

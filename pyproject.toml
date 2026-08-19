@@ -19,6 +19,7 @@ api = [
     # The async driver. Chapter 10 runs migrations as a separate deploy step
     # from the same image, so alembic ships in the runtime group, not in dev.
     "psycopg[binary]>=3.2",
+    "python-multipart>=0.0.9",  # multipart/form-data, i.e. file upload
 ]
 dev = [
     "ruff>=0.16",
@@ -29,8 +30,16 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["core", "audio", "lyrics", "providers"]
-package-dir = { "" = "packages" }
+# Imported as `packages.core`, not bare `core`: the bare names collide with real
+# distributions on PyPI, and having packages/ resolvable under two module names
+# at once is ambiguous to any type checker.
+packages = [
+    "packages",
+    "packages.core",
+    "packages.audio",
+    "packages.lyrics",
+    "packages.providers",
+]
 
 # ---------------------------------------------------------------------------
 # ruff handles both linting and formatting, so there is one tool and one config
@@ -71,5 +80,5 @@ exclude = "(research|\\.venv)"
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["packages", "."]
+pythonpath = ["."]
 addopts = "-q"

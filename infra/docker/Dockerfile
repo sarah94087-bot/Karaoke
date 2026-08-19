@@ -9,11 +9,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    # apps/ is imported as a namespace package (apps.api.main); packages/ holds
-    # core, audio, lyrics, providers, which are imported by their bare names.
-    PYTHONPATH=/app:/app/packages
+    # Everything is imported from the repository root: apps.api.main,
+    # packages.core, packages.audio.
+    PYTHONPATH=/app
 
 WORKDIR /app
+
+# ffmpeg does the normalisation in T-1.5 and the encoding in T-1.6. Its own
+# layer, before the dependency layer, because it is the slowest thing in the
+# build and the least likely to change.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- dependency layer -------------------------------------------------------
 # Only pyproject.toml is copied, so this layer is rebuilt when the dependency
@@ -33,8 +40,11 @@ COPY alembic.ini ./
 COPY migrations/ ./migrations/
 
 # Nothing here needs root, and a free PaaS tier is not a place to find out
-# otherwise.
-RUN useradd --create-home --uid 10001 karuki && chown -R karuki:karuki /app
+# otherwise. The storage root is created and owned here so that the non-root
+# user can write to it once the volume is mounted over it.
+RUN mkdir -p /app/var/storage \
+    && useradd --create-home --uid 10001 karuki \
+    && chown -R karuki:karuki /app
 USER karuki
 
 EXPOSE 8000
