@@ -48,6 +48,20 @@ Serve the prototypes locally:
 .venv\Scripts\python.exe -m http.server 8000 --bind 127.0.0.1
 ```
 
+Run migrations (needs the compose stack up, or any `DATABASE_URL`):
+
+```
+$env:DATABASE_URL = "postgresql://karuki:karuki@localhost:5432/karuki"
+.venv\Scripts\python.exe -m alembic upgrade head
+.venv\Scripts\python.exe -m alembic downgrade base
+```
+
+The same step in the image, which is how it runs on deploy:
+
+```
+docker compose -f infra\docker\compose.yaml run --rm api alembic upgrade head
+```
+
 Deploy / measure the GPU function:
 
 ```
@@ -61,6 +75,11 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 ## Environment quirks that cost time before
 
 - PowerShell 5.1 has no `&&`. Use `;` or separate commands.
+- psycopg's async driver cannot run on Windows' default `ProactorEventLoop` and
+  says so in a message that reads like a broken database. Never comes up in the
+  container, which is Linux. `packages/core/db.py` has
+  `use_a_loop_psycopg_can_run_on()`; call it before `asyncio.run` in any local
+  entry point that opens a connection.
 - This machine runs TLS inspection. `requests` fails with "self-signed
   certificate in certificate chain" — `research/verify_groq.py` fixes it with
   `truststore.inject_into_ssl()`, not by disabling verification. `curl` needs
@@ -83,8 +102,8 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 (`T-0.2.5`, the phone test — everything for it is built and waiting).
 
-Phase 1 in progress. `T-1.1`, `T-1.2` and `T-1.3` done. Next is `T-1.4`: models
-and migrations for songs, stems, jobs.
+Phase 1 in progress. `T-1.1` through `T-1.4` done. Next is `T-1.5`: local file
+upload and normalisation to a uniform WAV.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -129,6 +148,30 @@ From `T-1.3`:
   multi-line `python -c`, and Docker joins continuations with a leading space,
   which Python rejects as an unexpected indent. That is why it is a file,
   `infra/docker/requirements.py`, and not a one-liner.
+
+From `T-1.4`:
+
+- Models are in `packages/core/{enums,models,db}.py`; Alembic lives at the repo
+  root (`alembic.ini`, `migrations/`) because chapter 10 makes migrations a
+  deploy step of their own, ahead of the new code.
+- The URL comes from `DATABASE_URL` in `migrations/env.py`, not from
+  `alembic.ini`, so the migration step and the API cannot disagree about which
+  database they mean.
+- Vocabularies are `CHECK` constraints over varchar, not native enum types:
+  adding a state later stays an ordinary migration with a working downgrade, and
+  the schema stays portable while `D-15` is open.
+- Every constraint and index is named by the convention in `packages/core/db.py`.
+  Without it Postgres names them and a downgrade cannot drop by name what it did
+  not name — this is what makes "runs down cleanly" true on more than one machine.
+- Ids default to `gen_random_uuid()` in the database, not only in Python. A
+  Python-only default breaks every insert that bypasses the ORM.
+- `jobs.user_id` has no foreign key: users belong to a managed auth provider and
+  `D-16` is undecided.
+- Only `songs`, `stems`, `jobs` exist. The other five tables in chapter 5 come
+  with the tasks that use them.
+- `tests/test_migrations.py` needs a real Postgres and skips without one. It
+  drops every table, so it refuses to run unless `DATABASE_URL` points at a
+  local host.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

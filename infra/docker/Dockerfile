@@ -26,6 +26,11 @@ RUN python requirements.py api > requirements-api.txt && pip install -r requirem
 # --- code layer -------------------------------------------------------------
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
+# Chapter 10 runs migrations as a separate deploy step, ahead of the new code.
+# That step needs a vehicle, and it is this image:
+#   docker compose run --rm api alembic upgrade head
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
 
 # Nothing here needs root, and a free PaaS tier is not a place to find out
 # otherwise.

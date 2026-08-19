@@ -140,3 +140,10 @@ def test_secrets_do_not_enter_the_image():
 
     for secret in (".env", "certs/"):
         assert secret in ignored
+
+
+def test_the_image_can_run_the_migrations(dockerfile: str):
+    """Chapter 10 runs migrations as a separate deploy step ahead of the new
+    code. That step needs something to run in, and it is this image."""
+    assert "COPY alembic.ini" in dockerfile
+    assert "COPY migrations/" in dockerfile
