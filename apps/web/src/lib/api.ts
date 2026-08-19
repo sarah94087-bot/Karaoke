@@ -127,6 +127,39 @@ export function getLibrary(): Promise<Library> {
   return request<Library>("/songs");
 }
 
+export interface StemLink {
+  kind: "vocals" | "drums" | "bass" | "other";
+  url: string;
+  format: string;
+  bytes: number;
+}
+
+export interface SongDetail {
+  id: string;
+  title: string;
+  artist: string | null;
+  duration_sec: number | null;
+  status: LibrarySong["status"];
+  is_playable: boolean;
+  lyrics_status: LibrarySong["lyrics_status"];
+  original_key: string | null;
+  bpm: number | null;
+  stems: StemLink[];
+}
+
+export function getSong(songId: string): Promise<SongDetail> {
+  return request<SongDetail>(`/songs/${songId}`);
+}
+
+/**
+ * Stem URLs come back relative to the API root, because in phase 3 they become
+ * signed absolute URLs from an object store and the player must not care which
+ * it was given.
+ */
+export function stemUrl(link: StemLink): string {
+  return link.url.startsWith("http") ? link.url : `${API_BASE.replace(/\/api\/v1$/, "")}${link.url}`;
+}
+
 export function getJob(jobId: string): Promise<JobStatus> {
   return request<JobStatus>(`/jobs/${jobId}`);
 }

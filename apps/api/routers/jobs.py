@@ -202,6 +202,7 @@ async def _snapshot(sessions: SessionsDep, job_id: uuid.UUID) -> JobEvent | None
 def _event(job: Job, song: Song, kind: str) -> JobEvent:
     return JobEvent(
         job_id=job.id,
+        song_id=song.id,
         type=kind,  # type: ignore[arg-type]
         state=job.state,
         progress=job.progress,

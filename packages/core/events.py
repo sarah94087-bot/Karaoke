@@ -44,12 +44,16 @@ class JobEvent:
     state: str
     progress: int
     is_playable: bool
+    # Carried so a client that only ever sees the stream can link straight to
+    # the player when `playable` arrives - which is the moment D-28 exists for.
+    song_id: uuid.UUID | None = None
     current_step: str | None = None
     error_code: str | None = None
 
     def payload(self) -> dict[str, object]:
         data = asdict(self)
         data["job_id"] = str(self.job_id)
+        data["song_id"] = None if self.song_id is None else str(self.song_id)
         return data
 
     @property

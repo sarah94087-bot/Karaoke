@@ -55,13 +55,14 @@ export function JobProgress({
         progress: number;
         is_playable: boolean;
         error_code: string | null;
+        song_id: string | null;
       };
       setJob((previous) => ({
         id: jobId,
-        song_id: previous?.song_id ?? "",
         attempts: previous?.attempts ?? 1,
         gpu_seconds: previous?.gpu_seconds ?? null,
         ...data,
+        song_id: data.song_id ?? previous?.song_id ?? "",
       }));
     };
 
@@ -125,11 +126,11 @@ export function JobProgress({
 
       {/* D-28: this is the whole point. The button appears the moment the stems
           are encoded, well before the job is finished. */}
-      {job.is_playable ? (
-        <p className="playable-banner">
+      {job.is_playable && job.song_id ? (
+        <Link className="playable-banner" href={`/${locale}/songs/${job.song_id}`}>
           <strong>{t.progress.sing}</strong>
           <span>{t.job.playableHint}</span>
-        </p>
+        </Link>
       ) : null}
 
       {job.state === "failed" ? (

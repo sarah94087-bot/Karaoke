@@ -366,5 +366,30 @@ From `T-1.11`:
   "השיר מוכן" — with exactly two API requests, the upload and the stream. A
   non-audio file produced "לא הצלחנו לקרוא את הקובץ כאודיו" on the form.
 
+From `T-1.12`:
+
+- `apps/web/public/pitch-worklet.js` is the phase 0 engine **copied unchanged**.
+  It was measured at 0 samples of drift across a whole song at every pitch and
+  tempo, and under a cent of pitch error; editing it means re-earning those
+  numbers. It has to stay a plain `.js` file in `public/` — `addModule()` needs
+  a URL and `AudioWorkletGlobalScope` has no bundler.
+- `src/lib/player/engine.ts` wraps it. **`position` is never computed in the app** —
+  it arrives from the worklet, which derives it from `inputPos`, the one read
+  head every stem advances by. Chapter 8 forbids browser timers, and the reason
+  is concrete: a timer and an audio clock agree for about a minute, then the
+  lyrics slide.
+- Audited live in a browser: **1 AudioContext, 1 worklet node with 4 outputs,
+  5 gain nodes (four stems + master), and 0 `setInterval` calls** — while the
+  clock ran. That is the acceptance criterion measured rather than asserted.
+- Four gain nodes hang off the worklet's outputs, so a mute never touches the
+  engine and cannot cost sync (T-0.2.2). Volume changes use `setTargetAtTime`
+  over ~70ms; a step in gain is an audible click.
+- `GET /songs/{id}` and `GET /songs/{id}/stems/{kind}` were added for this.
+  Chapter 6 wants signed URLs, which needs `D-12`; these point back at the API
+  instead, which is the same contract from the player's side. Stems are served
+  `immutable, max-age=31536000` — a stem never changes once written.
+- The engine's constructor builds nothing (`load()` does), so its ranges and
+  clamping are testable in plain Node without Web Audio.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

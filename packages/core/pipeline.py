@@ -52,6 +52,7 @@ def announce(bus: EventBus | None, job: Job, song: Song, kind: EventType) -> Non
     bus.publish(
         JobEvent(
             job_id=job.id,
+            song_id=song.id,
             type=kind,
             state=job.state,
             progress=job.progress,

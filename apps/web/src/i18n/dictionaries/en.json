@@ -25,6 +25,20 @@
     "reconnecting": "Reconnecting…",
     "failedTitle": "Processing failed"
   },
+  "player": {
+    "loading": "Loading the stems…",
+    "notReady": "This song is not ready to play yet.",
+    "failed": "The stems could not be loaded.",
+    "play": "Play",
+    "pause": "Pause",
+    "clock": "Engine clock",
+    "stems": {
+      "vocals": "Vocals",
+      "drums": "Drums",
+      "bass": "Bass",
+      "other": "Other"
+    }
+  },
   "library": {
     "title": "My library",
     "empty": "No songs here yet.",
@@ -73,6 +87,8 @@
     "processing_unavailable": "Processing cannot start right now. Try again in a moment.",
     "invalid_request": "The request was not valid.",
     "internal_error": "Something went wrong on our side. You can try again.",
+    "stem_not_found": "One of the song's stems was not found.",
+    "stem_missing": "The stem file is no longer in storage. The song needs processing again.",
     "unknown": "Something went wrong. You can try again."
   }
 }

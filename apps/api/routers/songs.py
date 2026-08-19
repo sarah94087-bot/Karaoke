@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Query, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -30,11 +31,12 @@ from packages.audio.normalize import (
     normalise,
 )
 from packages.core import jobs as job_service
-from packages.core.enums import SongStatus, SourceType
-from packages.core.models import Job, Song
-from packages.providers.storage import Storage
+from packages.core.enums import SongStatus, SourceType, StemKind
+from packages.core.models import Job, Song, Stem
+from packages.core.stems import stems_for
+from packages.providers.storage import Storage, StorageError
 
-from ..config import settings
+from ..config import API_PREFIX, settings
 from ..deps import RunnerDep, SessionDep, StorageDep
 from ..errors import ApiError
 
@@ -202,6 +204,96 @@ def _library_song(song: Song, job: Job | None) -> LibrarySong:
             progress=job.progress,
             error_code=job.error_code,
         ),
+    )
+
+
+class StemLink(BaseModel):
+    kind: str = Field(examples=["vocals", "drums", "bass", "other"])
+    url: str = Field(description="Where to fetch the audio. Relative to the API root.")
+    format: str
+    bytes: int
+
+
+class SongDetail(BaseModel):
+    """A song and its four stems - everything the player needs to open."""
+
+    id: uuid.UUID
+    title: str
+    artist: str | None
+    duration_sec: int | None
+    status: str
+    is_playable: bool
+    lyrics_status: str
+    original_key: str | None
+    bpm: float | None
+    stems: list[StemLink]
+
+
+@router.get(
+    "/songs/{song_id}",
+    response_model=SongDetail,
+    summary="A song and its stems",
+)
+async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
+    """Chapter 6 hands out *signed* URLs here, which needs an object store and
+    therefore D-12. Until then the URLs point back at this API, which is the
+    same contract from the player's side: fetch what you are given."""
+    song = await session.get(Song, song_id)
+    if song is None:
+        raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
+
+    found = await stems_for(session, song.id)
+    order = {str(kind): index for index, kind in enumerate(StemKind)}
+    return SongDetail(
+        id=song.id,
+        title=song.title,
+        artist=song.artist,
+        duration_sec=song.duration_sec,
+        status=song.status,
+        is_playable=song.is_playable,
+        lyrics_status=song.lyrics_status,
+        original_key=song.original_key,
+        bpm=float(song.bpm) if song.bpm is not None else None,
+        stems=[
+            StemLink(
+                kind=stem.kind,
+                url=f"{API_PREFIX}/songs/{song.id}/stems/{stem.kind}",
+                format=stem.format,
+                bytes=stem.bytes,
+            )
+            for stem in sorted(found, key=lambda stem: order.get(stem.kind, 99))
+        ],
+    )
+
+
+@router.get(
+    "/songs/{song_id}/stems/{kind}",
+    response_class=FileResponse,
+    summary="One stem's audio",
+    responses={200: {"content": {"audio/mpeg": {}}, "description": "The stem audio."}},
+)
+async def get_stem(
+    session: SessionDep, storage: StorageDep, song_id: uuid.UUID, kind: str
+) -> FileResponse:
+    """The stand-in for a signed URL (D-12).
+
+    Served with a long cache lifetime and marked immutable: a stem never changes
+    once written - a re-run replaces the row and the key stays the same - and the
+    player fetches four of these every time a song is opened.
+    """
+    stem = await session.scalar(select(Stem).where(Stem.song_id == song_id, Stem.kind == kind))
+    if stem is None:
+        raise ApiError("stem_not_found", "no such stem", status_code=status.HTTP_404_NOT_FOUND)
+
+    try:
+        path = storage.local_path(stem.storage_key)
+    except StorageError as exc:
+        raise ApiError("stem_missing", str(exc), status_code=410) from exc
+
+    return FileResponse(
+        path,
+        media_type="audio/mpeg" if stem.format == "mp3" else "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 

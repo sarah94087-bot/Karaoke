@@ -29,12 +29,16 @@ export function SongRow({
   return (
     <li className="song" data-state={song.job?.state ?? song.status}>
       <div className="song-main">
-        {song.job === null ? (
+        {/* A playable song opens the player; one still working opens its
+            progress screen. Either way the row goes somewhere - a library whose
+            rows do nothing is a list, not a library. */}
+        {song.is_playable ? (
+          <Link className="song-title" href={`/${locale}/songs/${song.id}`}>
+            {song.title}
+          </Link>
+        ) : song.job === null ? (
           <span className="song-title">{song.title}</span>
         ) : (
-          // A song being processed has somewhere to go: the progress screen.
-          // Without this the library is a dead end while the work is happening,
-          // which is exactly when a user most wants to look at it.
           <Link className="song-title" href={`/${locale}/jobs/${song.job.id}`}>
             {song.title}
           </Link>
