@@ -20,6 +20,19 @@ api = [
     # from the same image, so alembic ships in the runtime group, not in dev.
     "psycopg[binary]>=3.2",
     "python-multipart>=0.0.9",  # multipart/form-data, i.e. file upload
+    # The client for the deployed GPU function (T-0.3). Small; the model and
+    # the torch stack live on the remote side, not here.
+    "modal>=1.5",
+]
+# Local CPU separation (chapter 10's local environment, and chapter 11's escape
+# route). Deliberately NOT in `api`: torch and demucs are about 2GB, which would
+# take the API image from 306MB to unshippable on a free tier. In production the
+# `modal` backend does the work and this group is not installed.
+separation = [
+    "demucs==4.1.0",
+    "torch",
+    "soundfile>=0.12",
+    "numpy",
 ]
 dev = [
     "ruff>=0.16",
@@ -27,6 +40,7 @@ dev = [
     "pytest>=8",
     "httpx>=0.28",       # starlette's TestClient transport
     "pyyaml>=6",         # tests parse the compose file
+    "pytest-asyncio>=0.24",
 ]
 
 [tool.setuptools]
@@ -80,5 +94,9 @@ exclude = "(research|\\.venv)"
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The service layer is async because the API is. `auto` rather than a marker on
+# every test: forgetting the marker makes a coroutine silently never run, and
+# pass.
+asyncio_mode = "auto"
 pythonpath = ["."]
 addopts = "-q"

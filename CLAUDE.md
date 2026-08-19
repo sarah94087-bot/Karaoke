@@ -105,8 +105,8 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 (`T-0.2.5`, the phone test — everything for it is built and waiting).
 
-Phase 1 in progress. `T-1.1` through `T-1.5` done. Next is `T-1.6`: wrapping
-separation as an internal service — one call takes a file and returns 4 stems.
+Phase 1 in progress. `T-1.1` through `T-1.6` done. Next is `T-1.7`: the job
+state machine and progress, surviving a restart.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -197,6 +197,30 @@ From `T-1.5`:
   which is only a claim.
 - The song row is flushed, not committed, until storage has succeeded — a row
   pointing at files that are not there is worse than no row.
+
+From `T-1.6`:
+
+- `packages/providers/separation.py` has two backends behind one protocol:
+  `local` (Demucs on the CPU — free, ~1.13× song length) and `modal` (the GPU
+  function deployed in `T-0.3`). `packages/core/stems.py` is the internal
+  service; nothing above it knows a GPU exists.
+- **`local` is the default, on purpose.** The Modal workspace has **$1/month**,
+  not $30 (`docs/phase0/quotas.md`), so a stray run spends real money. The
+  remote backend has to be asked for by name, via `KARUKI_SEPARATION_BACKEND`.
+- The Modal path is tested against a fake. **No test spends GPU credit**, and it
+  should stay that way.
+- torch and demucs are in their own `separation` dependency group, **not** in
+  `api`: they are ~2GB and would take the API image from 306MB to unshippable
+  on a free tier. In production the `modal` backend does the work. The local
+  backend raises a clear `SeparationError` when the group is missing.
+- Stems are mp3 128k, matching the storage budget phase 0 measured. Verified
+  end to end on a real 30s excerpt: 47.9s separation on CPU, four distinct
+  stems, 1.84MB — which extrapolates to ~14.7MB per four-minute song, against
+  the 15.4MB phase 0 measured.
+- The four stems are encoded concurrently. Phase 0 measured serial encoding at
+  15.5s against 6.2s for the separation itself.
+- Re-running `separate_song` replaces the stems rather than adding a second set;
+  `(song_id, kind)` is unique and chapter 7 wants every stage re-runnable.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

@@ -50,6 +50,14 @@ class Settings:
         default_factory=lambda: int(os.getenv("KARUKI_MAX_UPLOAD_BYTES", str(80 * 1024 * 1024)))
     )
 
+    # "local" runs Demucs on this machine's CPU: slow, free, always available,
+    # and what chapter 10 specifies for the local environment. "modal" is the
+    # serverless GPU from T-0.3 and spends real money out of a $1/month credit,
+    # so it is never the default - choosing it has to be a decision.
+    separation_backend: str = field(
+        default_factory=lambda: os.getenv("KARUKI_SEPARATION_BACKEND", "local")
+    )
+
     @property
     def is_local(self) -> bool:
         return self.environment == "local"
