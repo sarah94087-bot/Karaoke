@@ -37,6 +37,18 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def get_sessions(request: Request) -> async_sessionmaker[AsyncSession]:
+    """The factory, not a session.
+
+    For the SSE stream, which needs one short read and then must let go of the
+    connection rather than holding it open for as long as a browser tab is.
+    """
+    factory: async_sessionmaker[AsyncSession] | None = getattr(request.app.state, "sessions", None)
+    if factory is None:
+        raise ApiError("database_unavailable", "the database is not reachable", status_code=503)
+    return factory
+
+
 def get_runner(request: Request) -> JobRunner:
     runner: JobRunner | None = getattr(request.app.state, "runner", None)
     if runner is None:
@@ -51,3 +63,4 @@ def get_runner(request: Request) -> JobRunner:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
 RunnerDep = Annotated[JobRunner, Depends(get_runner)]
+SessionsDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_sessions)]

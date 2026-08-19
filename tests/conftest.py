@@ -81,7 +81,15 @@ def schema(alembic: Callable[..., subprocess.CompletedProcess[str]]) -> None:
 
 @pytest.fixture
 def empty_songs(schema: None, connect: Callable[[], "object"]) -> Iterator[None]:
-    """Leave the songs table as it was found. Stems and jobs cascade."""
+    """An empty songs table, before and after.
+
+    Before matters as much as after: uploads deduplicate on the hash of the
+    normalised audio, so a row left behind by a run that was killed makes the
+    next run's upload return "already existed" and no job id - which fails a
+    long way from the cause.
+    """
+    with connect() as conn:
+        conn.execute("delete from songs")
     yield
     with connect() as conn:
         conn.execute("delete from songs")

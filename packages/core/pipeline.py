@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core import jobs
 from packages.core.enums import JobStep
+from packages.core.events import EventBus, EventType, JobEvent
 from packages.core.models import Job, Song
 from packages.core.stems import record_stems, separate, source_for
 from packages.providers.separation import (
@@ -40,12 +41,34 @@ class PipelineError(RuntimeError):
         self.code = code
 
 
+def announce(bus: EventBus | None, job: Job, song: Song, kind: EventType) -> None:
+    """Tell the watchers, after the change is committed and not before.
+
+    Order matters: a client told about a step that is then rolled back has seen
+    something that never happened, and it has no way to find that out.
+    """
+    if bus is None:
+        return
+    bus.publish(
+        JobEvent(
+            job_id=job.id,
+            type=kind,
+            state=job.state,
+            progress=job.progress,
+            is_playable=song.is_playable,
+            current_step=job.current_step,
+            error_code=job.error_code,
+        )
+    )
+
+
 async def run_job(
     session: AsyncSession,
     storage: Storage,
     separator: Separator,
     job: Job,
     song: Song,
+    bus: EventBus | None = None,
 ) -> Job:
     """Take a queued job to `ready`, or to `failed` with a code.
 
@@ -55,27 +78,37 @@ async def run_job(
     """
     await jobs.start(session, job)
     await session.commit()
+    announce(bus, job, song, "progress")
 
     try:
-        await _ingest(session, storage, job, song)
-        await _separate(session, storage, separator, job, song)
+        await _ingest(session, storage, job, song, bus)
+        await _separate(session, storage, separator, job, song, bus)
     except PipelineError as exc:
         log.warning("job %s failed at %s: %s", job.id, job.current_step, exc)
         await jobs.fail(session, job, exc.code, song)
         await session.commit()
+        announce(bus, job, song, "failed")
         return job
     except Exception as exc:  # noqa: BLE001 - an unexpected failure is still a failed job
         log.exception("job %s crashed at %s", job.id, job.current_step)
         await jobs.fail(session, job, "internal_error", song)
         await session.commit()
+        announce(bus, job, song, "failed")
         raise PipelineError("internal_error", str(exc)) from exc
 
     await jobs.finish(session, job, song)
     await session.commit()
+    announce(bus, job, song, "ready")
     return job
 
 
-async def _ingest(session: AsyncSession, storage: Storage, job: Job, song: Song) -> None:
+async def _ingest(
+    session: AsyncSession,
+    storage: Storage,
+    job: Job,
+    song: Song,
+    bus: EventBus | None = None,
+) -> None:
     """The upload already normalised the audio (T-1.5); this confirms it is there.
 
     It is a real step rather than a formality: a song whose object went missing
@@ -83,6 +116,7 @@ async def _ingest(session: AsyncSession, storage: Storage, job: Job, song: Song)
     """
     await jobs.advance(session, job, JobStep.INGESTING, song)
     await session.commit()
+    announce(bus, job, song, "progress")
     try:
         source_for(storage, song)
     except SeparationError as exc:
@@ -95,9 +129,11 @@ async def _separate(
     separator: Separator,
     job: Job,
     song: Song,
+    bus: EventBus | None = None,
 ) -> None:
     await jobs.advance(session, job, JobStep.SEPARATING, song)
     await session.commit()
+    announce(bus, job, song, "progress")
 
     with tempfile.TemporaryDirectory(prefix="karuki-job-") as tmp:
         try:
@@ -116,9 +152,13 @@ async def _separate(
         # still to do when separation returns.
         await jobs.advance(session, job, JobStep.ENCODING, song)
         await session.commit()
+        announce(bus, job, song, "progress")
         await record_stems(session, storage, song, result)
 
     # D-28: four stems on disk is everything the player needs. The lyrics can
     # keep the user waiting; the singing does not have to.
     await jobs.mark_playable(session, job, song)
     await session.commit()
+    # Chapter 6 names this event specifically: it must arrive before `ready`,
+    # because it is the moment the user is allowed to start singing.
+    announce(bus, job, song, "playable")

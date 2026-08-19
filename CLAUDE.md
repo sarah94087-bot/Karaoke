@@ -260,5 +260,35 @@ From `T-1.7`:
 - Uploading now starts a job and returns `job_id`, which is chapter 6's
   `POST /songs` behaviour.
 
+From `T-1.8`:
+
+- `GET /api/v1/jobs/{id}/events` is the SSE stream (D-18). `packages/core/events.py`
+  is an **in-process** bus, not database polling and not `LISTEN/NOTIFY`: the job
+  runs in this process (D-25), so the process already knows the moment anything
+  changes. Polling would cost a query per client per second on a free-tier
+  Postgres where connections are the scarce resource; `LISTEN/NOTIFY` wants a
+  connection dedicated to listening. This assumes one API instance, which
+  chapter 9 requires anyway. If that changes, that file is what becomes
+  `LISTEN/NOTIFY`.
+- **Subscribe before reading the snapshot.** The other order leaves a gap in
+  which the job can finish unobserved — the snapshot says "running", `ready` is
+  published to nobody, and the client waits forever. This was a real hang, found
+  because the test suite froze.
+- The first message is the current state: `snapshot` while running, or
+  `ready`/`failed` if it already finished, so a client that reconnects fires the
+  same handler as one that watched throughout.
+- A heartbeat comment every 15s. Separation genuinely sends nothing for a minute
+  or more and proxies close idle connections. `X-Accel-Buffering: no` is there
+  because a buffering proxy delivers the whole stream at the end, which looks
+  exactly like the feature not working.
+- `queue.put_nowait` with a bounded queue: a browser tab that stopped reading
+  must never block the separation publishing to it.
+- Verified against a real 45s song: `snapshot` at 0.4s, heartbeats at 15/30/45/60s
+  through the separation, then `progress` → `playable` → `ready`, and the server
+  closed the stream. Note `playable` and `ready` arrive together today because
+  nothing runs between them yet; D-28's gap opens up when transcription and
+  alignment land in phase 2.
+- `GET /jobs/{id}` stays as the fallback for a client that cannot use SSE.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

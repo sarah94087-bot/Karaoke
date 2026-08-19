@@ -4,19 +4,30 @@ The SSE stream that pushes these same changes is T-1.8; this is the polled form,
 and it stays because a stream that drops has to have something to fall back to.
 """
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from packages.core import jobs as job_service
 from packages.core.enums import JobState
+from packages.core.events import JobEvent
 from packages.core.models import Job, Song
 
-from ..deps import RunnerDep, SessionDep
+from .. import sse
+from ..deps import RunnerDep, SessionDep, SessionsDep
 from ..errors import ApiError
 
 router = APIRouter(tags=["jobs"])
+
+# How long the stream will sit on a silent queue before checking the row itself.
+# Separation legitimately produces nothing for a minute or more, so this is not
+# a poll in any meaningful sense - it is the safety net that stops a client
+# hanging forever if an event is ever missed.
+RECONCILE_SECONDS = 5.0
 
 
 class JobStatus(BaseModel):
@@ -93,3 +104,108 @@ async def retry_job(session: SessionDep, runner: RunnerDep, job_id: uuid.UUID) -
     await session.commit()
     runner.schedule(job.id)
     return as_status(job, song)
+
+
+@router.get(
+    "/jobs/{job_id}/events",
+    summary="Live progress (SSE)",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {sse.MEDIA_TYPE: {}},
+            "description": (
+                "A stream of `snapshot`, `progress`, `playable`, `ready` and `failed` events. "
+                "The first message is always the current state: `snapshot` while the job is "
+                "still going, or `ready`/`failed` if it has already finished - so a client that "
+                "connects late, or reconnects, fires the same handler as one that watched "
+                "throughout. `playable` always arrives before `ready`: it is the moment the "
+                "user may start singing (D-28). The stream closes once the job is finished. "
+                "`GET /jobs/{job_id}` is the fallback for a client that cannot use SSE."
+            ),
+        }
+    },
+)
+async def job_events(
+    request: Request, runner: RunnerDep, sessions: SessionsDep, job_id: uuid.UUID
+) -> StreamingResponse:
+    """D-18. The first message is always the current state, then live changes.
+
+    The snapshot matters more than it looks: a client that connects after the
+    job is already running - or after it has finished, having reconnected - has
+    to be told where things stand rather than waiting for a change that may
+    never come.
+    """
+    async with sessions() as session:
+        if await job_service.get_job(session, job_id) is None:
+            raise ApiError("job_not_found", "no such job", status_code=status.HTTP_404_NOT_FOUND)
+
+    async def stream() -> AsyncIterator[str]:
+        yield sse.opening()
+
+        # Subscribe *before* reading the state, not after. The other order
+        # leaves a gap in which the job can finish unobserved: the snapshot
+        # would say "running", the `ready` event would be published to nobody,
+        # and the client would wait for a change that had already happened.
+        async with runner.events.subscribe(job_id) as queue:
+            snapshot = await _snapshot(sessions, job_id)
+            if snapshot is None:
+                return
+            yield sse.frame(snapshot.type, snapshot.payload())
+            if snapshot.is_final:
+                return
+
+            while not await request.is_disconnected():
+                try:
+                    event: JobEvent | None = await asyncio.wait_for(
+                        queue.get(), timeout=RECONCILE_SECONDS
+                    )
+                except TimeoutError:
+                    # Nothing for a while. Almost always a long separation, but
+                    # it is also what a lost event would look like, so check the
+                    # row rather than trust the silence forever.
+                    event = await _snapshot(sessions, job_id)
+                    if event is None or not event.is_final:
+                        continue
+                assert event is not None
+                yield sse.frame(event.type, event.payload())
+                if event.is_final:
+                    return
+
+    return StreamingResponse(
+        sse.with_heartbeat(stream()),
+        media_type=sse.MEDIA_TYPE,
+        headers=sse.HEADERS,
+    )
+
+
+async def _snapshot(sessions: SessionsDep, job_id: uuid.UUID) -> JobEvent | None:
+    """Read the current state, holding a connection for as short a time as possible.
+
+    One database connection per watching browser, held for as long as the tab is
+    open, is not something a free-tier Postgres has to spare.
+    """
+    async with sessions() as session:
+        job = await job_service.get_job(session, job_id)
+        if job is None:
+            return None
+        song = await session.get(Song, job.song_id)
+        if song is None:  # pragma: no cover - the foreign key prevents this
+            return None
+        kind = "snapshot"
+        if job.state == JobState.FAILED:
+            kind = "failed"
+        elif job.state == JobState.READY:
+            kind = "ready"
+        return _event(job, song, kind)
+
+
+def _event(job: Job, song: Song, kind: str) -> JobEvent:
+    return JobEvent(
+        job_id=job.id,
+        type=kind,  # type: ignore[arg-type]
+        state=job.state,
+        progress=job.progress,
+        is_playable=song.is_playable,
+        current_step=job.current_step,
+        error_code=job.error_code,
+    )
