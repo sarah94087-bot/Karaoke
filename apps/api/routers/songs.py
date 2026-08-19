@@ -28,12 +28,13 @@ from packages.audio.normalize import (
     ToolMissing,
     normalise,
 )
+from packages.core import jobs as job_service
 from packages.core.enums import SongStatus, SourceType
 from packages.core.models import Song
 from packages.providers.storage import Storage
 
 from ..config import settings
-from ..deps import SessionDep, StorageDep
+from ..deps import RunnerDep, SessionDep, StorageDep
 from ..errors import ApiError
 
 router = APIRouter(tags=["songs"])
@@ -58,6 +59,11 @@ class SongCreated(BaseModel):
     already_existed: bool = Field(
         description="True when the same audio was uploaded before and was reused rather than "
         "processed again. Chapter 9 caps new songs per month, so this matters to the user."
+    )
+    job_id: uuid.UUID | None = Field(
+        default=None,
+        description="The processing job, started immediately. Poll GET /jobs/{id}. Null when "
+        "the song already existed and no new work was needed.",
     )
 
 
@@ -114,6 +120,7 @@ async def upload_song(
     response: Response,
     session: SessionDep,
     storage: StorageDep,
+    runner: RunnerDep,
     file: Annotated[UploadFile, File(description="Any common audio format.")],
 ) -> SongCreated:
     suffix = Path(file.filename or "").suffix.lower()
@@ -159,9 +166,16 @@ async def upload_song(
         await session.flush()
 
         _store(storage, song.id, original, normalised)
+
+        # Chapter 6: creating a song starts the work and returns a job_id
+        # immediately. The job is queued inside the transaction and only
+        # scheduled once it is committed - a task that raced the commit would
+        # look up a job that is not there yet.
+        job = await job_service.create_job(session, song, uuid.UUID(settings.dev_user_id))
         await session.commit()
 
-    return _created(song, already_existed=False)
+    runner.schedule(job.id)
+    return _created(song, already_existed=False, job_id=job.id)
 
 
 def _store(storage: Storage, song_id: uuid.UUID, original: Path, normalised: Path) -> None:
@@ -181,7 +195,7 @@ def _store(storage: Storage, song_id: uuid.UUID, original: Path, normalised: Pat
         raise
 
 
-def _created(song: Song, already_existed: bool) -> SongCreated:
+def _created(song: Song, already_existed: bool, job_id: uuid.UUID | None = None) -> SongCreated:
     return SongCreated(
         id=song.id,
         title=song.title,
@@ -191,4 +205,5 @@ def _created(song: Song, already_existed: bool) -> SongCreated:
         sample_rate=TARGET_SAMPLE_RATE,
         channels=TARGET_CHANNELS,
         already_existed=already_existed,
+        job_id=job_id,
     )

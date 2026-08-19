@@ -36,10 +36,11 @@ Bring up the local environment (API + Postgres):
 docker compose -f infra\docker\compose.yaml up
 ```
 
-Run the API alone, without Docker (docs at `/docs`, health at `/system/health`):
+Run the API alone, without Docker (docs at `/docs`, health at `/system/health`).
+Use the module, **not** `uvicorn` directly — see the psycopg note below:
 
 ```
-.venv\Scripts\python.exe -m uvicorn apps.api.main:app --reload --port 8000
+.venv\Scripts\python.exe -m apps.api --port 8000
 ```
 
 Serve the prototypes locally:
@@ -80,6 +81,14 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
   container, which is Linux. `packages/core/db.py` has
   `use_a_loop_psycopg_can_run_on()`; call it before `asyncio.run` in any local
   entry point that opens a connection.
+  **`uvicorn apps.api.main:app` does not work locally because of this**, and two
+  obvious fixes do not help: setting the policy in `main.py` is too late (the
+  app is imported after the loop exists), and setting it before `uvicorn.run`
+  has no effect (uvicorn builds its loop from a `loop_factory` and never
+  consults the policy). `apps/api/__main__.py` runs the server on a loop it
+  creates itself, which is why the command above is `python -m apps.api`.
+  `--reload` still spawns a child process with its own loop, so it only works
+  for changes that do not touch the database.
 - This machine runs TLS inspection. `requests` fails with "self-signed
   certificate in certificate chain" — `research/verify_groq.py` fixes it with
   `truststore.inject_into_ssl()`, not by disabling verification. `curl` needs
@@ -221,6 +230,35 @@ From `T-1.6`:
   15.5s against 6.2s for the separation itself.
 - Re-running `separate_song` replaces the stems rather than adding a second set;
   `(song_id, kind)` is unique and chapter 7 wants every stage re-runnable.
+
+From `T-1.7`:
+
+- `packages/core/jobs.py` is the state machine, `packages/core/pipeline.py` runs
+  a job through it, `apps/api/runner.py` starts it in the background. D-25: no
+  Celery, no Redis — the status in Postgres *is* the queue.
+- Progress is derived from the step (`STEP_PROGRESS`), never passed in. A caller
+  free to choose its own number eventually reports 90% twice.
+- **Every step commits before doing the work.** That is what "survives a
+  restart" means in practice: the progress a user is looking at has to be
+  durable at the moment they see it.
+- On startup the lifespan runs `recover_interrupted`, which marks any row still
+  in `running` as `failed` / `interrupted`. Jobs run in this process and chapter
+  9 budgets for one instance, so a `running` row at startup is always orphaned.
+  It is **not** re-queued: that would be an automatic retry of a step that may
+  have cost GPU credit, which chapter 7 forbids. The user retries via
+  `POST /jobs/{id}/retry`.
+- Verified for real: killed the API mid-separation, the row was left `running`,
+  the restart turned it into `failed`/`interrupted`, and the retry then ran to
+  `ready` with `attempts=2`.
+- Separation runs in a worker thread (`asyncio.to_thread`). Inline it would
+  freeze the event loop and the keep-alive ping would time out, so the platform
+  would call the service unhealthy while it is working perfectly.
+- **The compose container cannot separate** — no torch by design (see T-1.6). It
+  reports `separation_unavailable`, deliberately distinct from
+  `separation_failed`: one is the operator's problem, the other is the file's.
+  Local separation needs the venv, i.e. `python -m apps.api`.
+- Uploading now starts a job and returns `job_id`, which is chapter 6's
+  `POST /songs` behaviour.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

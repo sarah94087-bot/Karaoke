@@ -46,26 +46,46 @@ def normalised_key(song_id: uuid.UUID) -> str:
     return NORMALISED_KEY.format(song_id=song_id)
 
 
+def source_for(storage: Storage, song: Song) -> Path:
+    """The normalised audio, or a clear failure if ingestion has not run."""
+    key = normalised_key(song.id)
+    if not storage.exists(key):
+        raise SeparationError(f"song {song.id} has no normalised audio; it has not been ingested")
+    return storage.local_path(key)
+
+
+def separate(storage: Storage, separator: Separator, song: Song, work: Path) -> Separated:
+    """Just the separation, into `work`. No database, no storage writes.
+
+    Split from `record_stems` so that the job runner can report `separating` and
+    `encoding` as the distinct steps chapter 7 lists, instead of showing one long
+    stall and inventing a step boundary that does not exist.
+    """
+    return separator.separate(source_for(storage, song), work)
+
+
+async def record_stems(
+    session: AsyncSession, storage: Storage, song: Song, result: Separated
+) -> list[Stem]:
+    """Store the four stems and write their rows. Does not commit."""
+    return await _record(session, storage, song, result)
+
+
 async def separate_song(
     session: AsyncSession,
     storage: Storage,
     separator: Separator,
     song: Song,
 ) -> SeparationOutcome:
-    """Separate a song's normalised audio into four stored, recorded stems.
+    """Separate, store and record in one call - T-1.6's internal service.
 
     The order matters: separate, store, then write rows, and commit only at the
     end. A stem row that points at an object which is not there would make the
     player fail on a song the library says is ready.
     """
-    source_key = normalised_key(song.id)
-    if not storage.exists(source_key):
-        raise SeparationError(f"song {song.id} has no normalised audio; it has not been ingested")
-
-    source = storage.local_path(source_key)
     with tempfile.TemporaryDirectory(prefix="karuki-separate-") as tmp:
-        result = separator.separate(source, Path(tmp))
-        stems = await _record(session, storage, song, result)
+        result = separate(storage, separator, song, Path(tmp))
+        stems = await record_stems(session, storage, song, result)
 
     await session.commit()
     return SeparationOutcome(

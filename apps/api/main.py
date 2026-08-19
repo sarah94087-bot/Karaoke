@@ -15,13 +15,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from packages.core.db import create_engine, session_factory
+from packages.core.jobs import recover_interrupted
+from packages.providers.separation import get_separator
 from packages.providers.storage import LocalStorage
 
 from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
 from .request_id import HEADER
-from .routers import songs, system
+from .routers import jobs, songs, system
+from .runner import JobRunner
 
 log = logging.getLogger("karuki.api")
 
@@ -45,17 +48,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.storage = LocalStorage(Path(settings.storage_root))
     app.state.engine = None
     app.state.sessions = None
+    app.state.runner = None
 
     if settings.database_url:
         engine = create_engine(settings.database_url)
+        sessions = session_factory(engine)
         app.state.engine = engine
-        app.state.sessions = session_factory(engine)
+        app.state.sessions = sessions
+        app.state.runner = JobRunner(
+            sessions=sessions,
+            storage=app.state.storage,
+            separator=get_separator(settings.separation_backend),
+        )
+
+        # Nothing is running, whatever the table says: jobs run inside this
+        # process, and this process has just started. Rows left in `running` by
+        # a crash or a redeploy are marked failed here so a user sees "it
+        # stopped" instead of a bar that never moves again.
+        async with sessions() as session:
+            interrupted = await recover_interrupted(session)
+        if interrupted:
+            log.warning("marked %d interrupted job(s) failed at startup", len(interrupted))
     else:
         log.warning("DATABASE_URL is not set; endpoints that need data will return 503")
 
     try:
         yield
     finally:
+        if app.state.runner is not None:
+            await app.state.runner.drain()
         if app.state.engine is not None:
             await app.state.engine.dispose()
 
@@ -89,6 +110,7 @@ def create_app() -> FastAPI:
 
     app.include_router(system.router, prefix=API_PREFIX)
     app.include_router(songs.router, prefix=API_PREFIX)
+    app.include_router(jobs.router, prefix=API_PREFIX)
     # Same handler, unprefixed and unlisted: the container HEALTHCHECK and the
     # external keep-alive cron are configured once and should not have to be
     # re-pointed when the API version prefix moves.

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from packages.providers.storage import Storage
 
 from .errors import ApiError
+from .runner import JobRunner
 
 
 def get_storage(request: Request) -> Storage:
@@ -36,5 +37,17 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def get_runner(request: Request) -> JobRunner:
+    runner: JobRunner | None = getattr(request.app.state, "runner", None)
+    if runner is None:
+        raise ApiError(
+            "processing_unavailable",
+            "the service cannot run jobs right now",
+            status_code=503,
+        )
+    return runner
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
+RunnerDep = Annotated[JobRunner, Depends(get_runner)]

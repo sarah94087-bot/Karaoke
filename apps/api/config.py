@@ -58,6 +58,15 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_SEPARATION_BACKEND", "local")
     )
 
+    # D-16 (which managed auth provider) is undecided, so phase 1 attributes
+    # every job to one local user. Chapter 6's Bearer token replaces this; the
+    # column it fills is already there and already has no foreign key.
+    dev_user_id: str = field(
+        default_factory=lambda: os.getenv(
+            "KARUKI_DEV_USER_ID", "00000000-0000-0000-0000-000000000001"
+        )
+    )
+
     @property
     def is_local(self) -> bool:
         return self.environment == "local"

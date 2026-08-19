@@ -37,6 +37,16 @@ class SeparationError(RuntimeError):
     decides."""
 
 
+class SeparationUnavailable(SeparationError):
+    """This process cannot separate at all - the backend is not installed here.
+
+    Distinct from a failure, because it is an operator's problem and not the
+    song's: it is what the API container reports, since torch and demucs are
+    deliberately not in its image (they are ~2GB). Telling a user their file
+    could not be separated would be a lie.
+    """
+
+
 @dataclass(frozen=True)
 class Separated:
     """Four stems on disk, plus what the run cost."""
@@ -81,7 +91,7 @@ class LocalDemucsSeparator:
             import soundfile
             from demucs.api import Separator as DemucsSeparator
         except ImportError as exc:
-            raise SeparationError(
+            raise SeparationUnavailable(
                 "local separation needs the `separation` dependency group "
                 f"(pip install -e .[separation]); {exc}"
             ) from exc
