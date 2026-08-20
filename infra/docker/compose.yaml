@@ -43,6 +43,10 @@ services:
       KARUKI_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
       DATABASE_URL: postgresql://karuki:karuki@db:5432/karuki
       KARUKI_STORAGE_ROOT: /app/var/storage
+      # Passed through from the host, never written here: this file is committed
+      # and .env is not. Empty is a working configuration - the API reports
+      # transcription as unavailable and everything else runs (T-2.3).
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     ports:
       - "8000:8000"
     volumes:

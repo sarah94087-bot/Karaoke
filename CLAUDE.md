@@ -101,6 +101,13 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
   certificate in certificate chain" — `research/verify_groq.py` fixes it with
   `truststore.inject_into_ssl()`, not by disabling verification. `curl` needs
   `--ssl-no-revoke`.
+- **A default `User-Agent` is not neutral.** Groq's edge answers
+  `Python-urllib/3.11` with `403`, and on a POST it drops the connection
+  instead — which arrives as `EOF occurred in violation of protocol` and reads
+  exactly like a broken TLS stack on a machine that really does have TLS
+  inspection. `packages/providers/net.py` holds the one `User-Agent` every
+  outbound call sends, next to the `truststore` injection, because both are
+  one-line fixes to failures that look like something else.
 - Console is cp1255. Set `PYTHONIOENCODING=utf-8` when a tool prints Unicode,
   and pass `encoding="utf-8"` to `subprocess` when filenames are Hebrew.
 - Shared code is imported as `packages.core`, `packages.audio`, … — not bare
@@ -125,9 +132,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` and `T-2.2` done. Next is `T-2.3`: the
-client for the transcription service, for the songs the open database does not
-have.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.3` done. Next is `T-2.4`:
+running the transcription twice — on the mix and on the vocals — and recording
+which of the two won in `source` (D-29).
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -587,6 +594,48 @@ From `T-2.2`:
   seam so that stays true.
 - Hebrew coverage being about half is the reason `T-2.3` exists and is not a
   disappointment: the database is the free path, transcription is the fallback.
+
+From `T-2.3`:
+
+- `packages/providers/transcription.py` is the seam: Groq's hosted
+  `whisper-large-v3` (D-27), free tier, no card, 2,000 requests a day against an
+  expected 30 a month. `urllib` again, and the multipart body is built by hand —
+  the standard library can read multipart and not write it, and the alternative
+  was an HTTP client in the image.
+- `KARUKI_TRANSCRIPTION_BACKEND` picks `groq` or `none`. No key is
+  `TranscriptionUnavailable`, deliberately distinct from a failure the way
+  `separation_unavailable` is: one is the operator's problem, the other is the
+  recording's. The key comes from `GROQ_API_KEY` in `.env` (gitignored) and is
+  passed through to the container by the compose file, never written into it.
+- **Verified live on the phase 0 song**: 132.7s of audio transcribed in 19.2s
+  (6.9× real time — slower than phase 0's 8–14×, on a smaller sample), 11
+  segments, 54 word-level timings, and the quota headers came back reading
+  2,000 / 1,999.
+- **The hallucination filter earns its threshold from that run.** Phase 0 warned
+  that Groq writes `תודה רבה` over an instrumental intro; the re-run reproduced
+  it exactly, plus a `תודה.` at 130.4s of a 132.7s recording. But the numbers
+  say something the plausible rule gets backwards:
+
+  | | `no_speech_prob` | `avg_logprob` | |
+  |---|---|---|---|
+  | `תודה רבה.` at 0.0s | 0.69 | −0.21 | hallucinated |
+  | `דרושנה דורשיך` at 30.0s | 0.55 | −0.27 | real |
+  | `לשמוע אל הרינה` at 86.4s | **0.82** | −0.27 | real |
+  | `תודה.` at 130.4s | 0.76 | −0.11 | hallucinated |
+
+  Sung Hebrew scores *higher* on `no_speech_prob` than the hallucination does,
+  so dropping on that number alone would have deleted the real lines and kept
+  the false ones. Whisper's rule needs **both** numbers, and with both required
+  it leaves this transcript untouched — the caption-phrase list is what actually
+  catches phase 0's case. The table is in `packages/lyrics/transcript.py` and in
+  a test, so a later tidy-up has to argue with a measurement.
+- Two identical segments in a row are a chorus; four are the model stuck in a
+  loop. That is the whole repetition rule.
+- **No test spends a request.** The suite replaces `urlopen`, which also lets it
+  assert the request itself — the model, `verbose_json`, and both
+  `timestamp_granularities[]`.
+- Nothing calls this from the pipeline yet. `T-2.4` is what runs it twice and
+  records which transcript won.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

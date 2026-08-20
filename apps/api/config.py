@@ -66,6 +66,14 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_LYRICS_CATALOGUE", "lrclib")
     )
 
+    # The transcription service (D-27, T-2.3), for the songs the open lyrics
+    # database does not have - which phase 0's Hebrew sample suggests is about
+    # half of them. Free tier, no card, 2,000 requests a day; a deployment with
+    # no GROQ_API_KEY reports transcription as unavailable rather than as failed.
+    transcription_backend: str = field(
+        default_factory=lambda: os.getenv("KARUKI_TRANSCRIPTION_BACKEND", "groq")
+    )
+
     # D-16 (which managed auth provider) is undecided, so phase 1 attributes
     # every job to one local user. Chapter 6's Bearer token replaces this; the
     # column it fills is already there and already has no foreign key.

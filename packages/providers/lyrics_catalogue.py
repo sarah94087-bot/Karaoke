@@ -23,12 +23,11 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Protocol
 
+from packages.providers.net import USER_AGENT, trust_system_certificates
+
 log = logging.getLogger("karuki.lyrics.catalogue")
 
 LRCLIB_URL = "https://lrclib.net/api/search"
-# LRCLIB asks callers to identify themselves rather than blend into the crowd,
-# which is a fair price for a free service with no key.
-USER_AGENT = "karuki/0.1.0 (https://github.com/sarah94087-bot/Karaoke)"
 # One HTTP call inside a job that has already spent a minute separating. Short
 # enough that a slow database never becomes the reason a song takes longer.
 TIMEOUT_SECONDS = float(os.getenv("KARUKI_LYRICS_TIMEOUT", "8"))
@@ -95,8 +94,9 @@ class LrclibCatalogue:
     """LRCLIB over its public search endpoint.
 
     `urllib` rather than a client library: this is one GET, and the API image
-    has to stay small enough for a free tier. The one thing worth importing is
-    `truststore`, and only when it happens to be installed - see below.
+    has to stay small enough for a free tier. The `User-Agent` and the
+    certificate store both come from `packages/providers/net.py`, which explains
+    what each of them is for.
     """
 
     name = "lrclib"
@@ -117,7 +117,7 @@ class LrclibCatalogue:
         return [self._candidate(row) for row in payload[:MAX_CANDIDATES] if isinstance(row, dict)]
 
     def _get(self, url: str) -> object:
-        _trust_the_machines_certificates()
+        trust_system_certificates()
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - https, built above
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
@@ -141,22 +141,6 @@ class LrclibCatalogue:
             remote_id=str(row.get("id") or ""),
             provider=self.name,
         )
-
-
-def _trust_the_machines_certificates() -> None:
-    """Use the operating system's certificate store when we can.
-
-    This machine runs TLS inspection: an antivirus re-signs HTTPS traffic, and
-    the bundle Python ships with rejects the chain with "self-signed certificate
-    in certificate chain". The Windows store already trusts that root. Optional
-    on purpose - the container is Linux, has no inspection, and does not need
-    the dependency in its image.
-    """
-    try:
-        import truststore
-    except ImportError:
-        return
-    truststore.inject_into_ssl()
 
 
 BACKENDS: dict[str, type] = {
