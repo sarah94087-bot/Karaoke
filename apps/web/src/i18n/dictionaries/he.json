@@ -36,13 +36,19 @@
       "vocals": "שירה",
       "drums": "תופים",
       "bass": "בס",
-      "other": "כלים"
+      "other": "כלים",
+      "backing": "ליווי"
     }
   },
   "mixer": {
     "title": "מיקסר",
     "removeVocals": "הסר שירה",
-    "restoreVocals": "החזר שירה"
+    "restoreVocals": "החזר שירה",
+    "twoStems": "שני ערוצים: שירה וליווי",
+    "twoStemsWhy": "מצב חסכוני מאחד את התופים, הבס והכלים לערוץ אחד. שימושי כשהנגן מגמגם.",
+    "lightMode": "מצב חסכוני",
+    "lightModeOn": "שני ערוצים",
+    "lightModeOff": "ארבעה ערוצים"
   },
   "controls": {
     "key": "סולם",

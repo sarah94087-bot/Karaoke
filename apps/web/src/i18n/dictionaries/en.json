@@ -36,13 +36,19 @@
       "vocals": "Vocals",
       "drums": "Drums",
       "bass": "Bass",
-      "other": "Other"
+      "other": "Other",
+      "backing": "Backing"
     }
   },
   "mixer": {
     "title": "Mixer",
     "removeVocals": "Remove vocals",
-    "restoreVocals": "Bring vocals back"
+    "restoreVocals": "Bring vocals back",
+    "twoStems": "Two channels: vocals and backing",
+    "twoStemsWhy": "Light mode folds drums, bass and other instruments into one channel. Useful when the player stutters.",
+    "lightMode": "Light mode",
+    "lightModeOn": "Two channels",
+    "lightModeOff": "Four channels"
   },
   "controls": {
     "key": "Key",

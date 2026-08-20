@@ -473,5 +473,33 @@ From `T-1.16`:
   the page, and got all four back — with remove/restore returning to 20% and the
   gain nodes at `[0.2, 0.6, 1, 1]`, so the engine holds them and not just the UI.
 
+From `T-1.17`:
+
+- **The automatic fallback is deliberately timid, and this is the honest part.**
+  The first implementation benchmarked the real worklet in an
+  `OfflineAudioContext` and fell back above 70% of real time — the instrument
+  phase 0 used, which recorded 47% for four stems at +6 on an 8-core desktop.
+  Re-run here it reported **164% on a machine that was at that moment playing
+  four stems at +6 without a glitch.** An offline render is throttled in a
+  background tab and competes with everything else at page-load time, so it
+  over-reports. Four stems is now the default and the measurement only overrides
+  it above 300%.
+- **The mode is a user control**, remembered per device in `localStorage`. That
+  is what actually carries the requirement until `T-0.2.5` can calibrate the
+  threshold on real hardware: an automatic answer nobody can override is a
+  mystery when it is wrong, in either direction.
+- Two-stem mode keeps **vocals separate** and folds drums/bass/other into one
+  backing channel, summed in the browser from the stems already downloaded — no
+  fifth object in storage. "Remove vocals" therefore still works, which is the
+  point; what is lost is balancing drums against bass, which is not why anyone
+  opened the app.
+- **The four stem volumes stay canonical in both modes.** The backing fader
+  reads their mean and writes all three, so a mix made on a phone still makes
+  sense on a laptop. Verified: drums at 40% → light mode showed backing 80% →
+  back to four showed drums 40% again.
+- Verified at 375×812: no horizontal overflow, every touch target ≥44px, and
+  light mode built **1 worklet node with 2 outputs** and 3 gain nodes instead of
+  4 and 5 — half the vocoder work, which is the whole point.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

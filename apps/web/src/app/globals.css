@@ -517,3 +517,100 @@ a.playable-banner:hover {
   font-weight: 400;
   color: var(--muted);
 }
+
+.two-stems {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  background: #2a2a3c;
+  cursor: help;
+}
+
+/* --- on a phone ----------------------------------------------------------- */
+
+/*
+ * Chapter 8 asks for the player to be *usable* on a phone, which is a different
+ * requirement from the two-stem fallback and is not satisfied by it. What that
+ * means concretely: nothing horizontally cramped, and every control big enough
+ * to hit with a thumb while holding the phone and singing.
+ */
+@media (max-width: 640px) {
+  main {
+    padding-inline: 1rem;
+    padding-block: 2rem;
+  }
+
+  .page-header {
+    align-items: stretch;
+  }
+
+  .key-tempo {
+    /* Two boxes side by side leaves each about 150px wide, which is not a
+       slider anyone can aim at. */
+    grid-template-columns: 1fr;
+  }
+
+  .fader label {
+    /* A 5rem label column eats a third of the screen. Put the name above the
+       slider instead, so the slider gets the whole width. */
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+
+  .fader {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+
+  /* Touch targets. 44px is the size everyone converges on for a reason. */
+  button,
+  .button-link {
+    min-block-size: 44px;
+  }
+
+  .stepper button {
+    inline-size: 3.25rem;
+    min-block-size: 44px;
+  }
+
+  input[type="range"] {
+    /* The default track is a few pixels tall and very hard to grab. */
+    block-size: 44px;
+  }
+
+  .remove-vocals {
+    padding-block: 1.1rem;
+  }
+
+  .song-facts {
+    gap: 1.25rem;
+  }
+}
+
+/* A phone held in landscape is short, not narrow; give the page back its room. */
+@media (max-height: 480px) and (orientation: landscape) {
+  main {
+    padding-block: 1rem;
+  }
+}
+
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.mode-switch label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mode-switch input[type="checkbox"] {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+  accent-color: var(--accent);
+}

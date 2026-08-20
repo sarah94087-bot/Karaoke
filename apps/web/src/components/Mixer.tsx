@@ -1,8 +1,9 @@
 "use client";
 
 import type { Dictionary } from "@/i18n";
-import type { StemKind } from "@/lib/player/engine";
-import { type MixState, STEM_ORDER, asPercent } from "@/lib/player/mix";
+import type { StemMode } from "@/lib/player/capability";
+import type { Channel, StemKind } from "@/lib/player/engine";
+import { type MixState, asPercent, backingVolume, fadersFor } from "@/lib/player/mix";
 
 /**
  * Four faders and the big button.
@@ -19,17 +20,23 @@ import { type MixState, STEM_ORDER, asPercent } from "@/lib/player/mix";
 export function Mixer({
   mix,
   available,
+  mode,
   t,
   onVolume,
   onToggleVocals,
+  onMode,
 }: {
   mix: MixState;
   available: readonly StemKind[];
+  mode: StemMode;
   t: Dictionary;
-  onVolume: (kind: StemKind, volume: number) => void;
+  onVolume: (kind: Channel, volume: number) => void;
   onToggleVocals: () => void;
+  onMode: (mode: StemMode) => void;
 }) {
-  const faders = STEM_ORDER.filter((kind) => available.includes(kind));
+  const faders = fadersFor(mode, available);
+  const levelOf = (kind: Channel) =>
+    kind === "backing" ? backingVolume(mix) : mix.volumes[kind as StemKind];
 
   return (
     <section className="mixer">
@@ -42,9 +49,27 @@ export function Mixer({
         {mix.vocalsRemoved ? t.mixer.restoreVocals : t.mixer.removeVocals}
       </button>
 
+      {/*
+        A control rather than only an automatic decision. The measurement that
+        would choose this reliably needs real phone hardware (T-0.2.5, still
+        blocked), and an automatic answer nobody can override is a mystery when
+        it is wrong in either direction. One tap either way.
+      */}
+      <div className="mode-switch">
+        <label>
+          <input
+            type="checkbox"
+            checked={mode === "two"}
+            onChange={(event) => onMode(event.target.checked ? "two" : "four")}
+          />
+          <span>{t.mixer.lightMode}</span>
+        </label>
+        <span className="hint">{mode === "two" ? t.mixer.twoStems : t.mixer.lightModeOff}</span>
+      </div>
+
       <ul className="faders">
         {faders.map((kind) => (
-          <li key={kind} className="fader" data-silent={mix.volumes[kind] === 0}>
+          <li key={kind} className="fader" data-silent={levelOf(kind) === 0}>
             <label>
               <span className="fader-name">{t.player.stems[kind]}</span>
               <input
@@ -52,11 +77,11 @@ export function Mixer({
                 min={0}
                 max={100}
                 step={1}
-                value={asPercent(mix.volumes[kind])}
+                value={asPercent(levelOf(kind))}
                 onChange={(event) => onVolume(kind, Number(event.target.value) / 100)}
               />
             </label>
-            <span className="fader-value">{asPercent(mix.volumes[kind])}%</span>
+            <span className="fader-value">{asPercent(levelOf(kind))}%</span>
           </li>
         ))}
       </ul>

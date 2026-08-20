@@ -22,9 +22,25 @@
 
 export type StemKind = "vocals" | "drums" | "bass" | "other";
 
+/**
+ * What the mixer actually has faders for. In two-stem mode the three
+ * non-vocal stems arrive folded into one "backing" channel (T-1.17).
+ */
+export type Channel = StemKind | "backing";
+
 export interface StemSource {
   kind: StemKind;
   url: string;
+}
+
+export interface LoadOptions {
+  /**
+   * Two-stem mode: vocals stay separate, the rest are summed into one backing
+   * channel before they reach the worklet. The vocoder then does half the work,
+   * which is the whole point - phase 0 measured four stems at +6 semitones at
+   * 47% of a desktop core and two at 20%.
+   */
+  mode?: "four" | "two";
 }
 
 export interface PlayerState {
@@ -53,9 +69,10 @@ interface WorkletStatus {
 export class PlayerEngine {
   private context: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
-  private gains = new Map<StemKind, GainNode>();
+  private gains = new Map<Channel, GainNode>();
   private master: GainNode | null = null;
-  private volumes = new Map<StemKind, number>();
+  private volumes = new Map<Channel, number>();
+  private loaded: Channel[] = [];
 
   private state: PlayerState = {
     position: 0,
@@ -90,7 +107,7 @@ export class PlayerEngine {
    * would otherwise have to be spliced into a running engine, which is exactly
    * how the sample-lock gets lost.
    */
-  async load(stems: StemSource[]): Promise<void> {
+  async load(stems: StemSource[], options: LoadOptions = {}): Promise<void> {
     this.dispose();
 
     const context = new AudioContext();
@@ -108,13 +125,10 @@ export class PlayerEngine {
 
     // The worklet reads Float32Arrays per channel. Mono stems are duplicated so
     // every stem presents the same shape.
-    const payload = decoded.map(({ kind, buffer }) => ({
-      name: kind,
-      data:
-        buffer.numberOfChannels >= 2
-          ? [buffer.getChannelData(0), buffer.getChannelData(1)]
-          : [buffer.getChannelData(0), buffer.getChannelData(0)],
-    }));
+    const channels =
+      options.mode === "two" ? foldToTwo(decoded) : decoded.map(asChannel);
+    const payload = channels.map(({ name, data }) => ({ name, data }));
+    this.loaded = channels.map((channel) => channel.name);
 
     const node = new AudioWorkletNode(context, "pitch-processor", {
       numberOfInputs: 0,
@@ -133,12 +147,12 @@ export class PlayerEngine {
     master.connect(context.destination);
     this.master = master;
 
-    decoded.forEach(({ kind }, index) => {
+    channels.forEach(({ name }, index) => {
       const gain = context.createGain();
-      gain.gain.value = this.volumes.get(kind) ?? 1;
+      gain.gain.value = this.volumes.get(name) ?? 1;
       node.connect(gain, index);
       gain.connect(master);
-      this.gains.set(kind, gain);
+      this.gains.set(name, gain);
     });
 
     node.port.onmessage = (event: MessageEvent<WorkletStatus>) => {
@@ -193,8 +207,13 @@ export class PlayerEngine {
     this.emit({ tempo: clamped });
   }
 
-  /** Per-stem volume, 0..1. The engine is untouched, so sync cannot be lost. */
-  setVolume(kind: StemKind, volume: number): void {
+  /** Which channels the mixer should show faders for. */
+  channels(): Channel[] {
+    return [...this.loaded];
+  }
+
+  /** Per-channel volume, 0..1. The engine is untouched, so sync cannot be lost. */
+  setVolume(kind: Channel, volume: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
     this.volumes.set(kind, clamped);
     const gain = this.gains.get(kind);
@@ -204,7 +223,7 @@ export class PlayerEngine {
     }
   }
 
-  getVolume(kind: StemKind): number {
+  getVolume(kind: Channel): number {
     return this.volumes.get(kind) ?? 1;
   }
 
@@ -214,10 +233,67 @@ export class PlayerEngine {
     this.master?.disconnect();
     for (const gain of this.gains.values()) gain.disconnect();
     this.gains.clear();
+    this.loaded = [];
     void this.context?.close();
     this.context = null;
     this.node = null;
     this.master = null;
     this.emit({ ready: false, playing: false, position: 0, duration: 0 });
   }
+}
+
+
+interface DecodedStem {
+  kind: StemKind;
+  buffer: AudioBuffer;
+}
+
+interface WorkletChannel {
+  name: Channel;
+  data: Float32Array[];
+}
+
+function asChannel({ kind, buffer }: DecodedStem): WorkletChannel {
+  return {
+    name: kind,
+    data:
+      buffer.numberOfChannels >= 2
+        ? [buffer.getChannelData(0), buffer.getChannelData(1)]
+        : [buffer.getChannelData(0), buffer.getChannelData(0)],
+  };
+}
+
+/**
+ * Vocals, and everything else summed into one backing channel.
+ *
+ * Summed here rather than fetched as a pre-mixed file: the four stems are
+ * already downloaded and cached, and the cost that matters is the vocoder's,
+ * which is per channel. Adding a fifth object to storage would spend chapter
+ * 9's budget to save nothing.
+ */
+function foldToTwo(decoded: DecodedStem[]): WorkletChannel[] {
+  const vocals = decoded.find((stem) => stem.kind === "vocals");
+  const rest = decoded.filter((stem) => stem.kind !== "vocals");
+  if (vocals === undefined || rest.length === 0) return decoded.map(asChannel);
+
+  const length = Math.min(...decoded.map((stem) => stem.buffer.length));
+  const backing = [new Float32Array(length), new Float32Array(length)];
+
+  for (const stem of rest) {
+    for (let channel = 0; channel < 2; channel++) {
+      const source = stem.buffer.getChannelData(
+        Math.min(channel, stem.buffer.numberOfChannels - 1),
+      );
+      const target = backing[channel];
+      for (let i = 0; i < length; i++) target[i] += source[i];
+    }
+  }
+
+  // The three were mixed at unity, so scale back to avoid clipping the sum.
+  const scale = 1 / rest.length;
+  for (const channel of backing) {
+    for (let i = 0; i < length; i++) channel[i] *= scale;
+  }
+
+  return [asChannel(vocals), { name: "backing", data: backing }];
 }

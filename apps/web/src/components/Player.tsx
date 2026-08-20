@@ -6,8 +6,20 @@ import { KeyTempo } from "@/components/KeyTempo";
 import { Mixer } from "@/components/Mixer";
 import type { Dictionary } from "@/i18n";
 import { type SongDetail, saveSettings, stemUrl } from "@/lib/api";
-import { PlayerEngine, type PlayerState, type StemKind } from "@/lib/player/engine";
-import { type MixState, setStemVolume, toggleVocals } from "@/lib/player/mix";
+import { type StemMode, resolveMode, storeMode } from "@/lib/player/capability";
+import {
+  type Channel,
+  PlayerEngine,
+  type PlayerState,
+  type StemKind,
+} from "@/lib/player/engine";
+import {
+  type MixState,
+  channelVolumes,
+  setBackingVolume,
+  setStemVolume,
+  toggleVocals,
+} from "@/lib/player/mix";
 import { createSaver, keyOf, tempoOf, toMix, toSettings } from "@/lib/player/persist";
 import { formatDuration } from "@/lib/song";
 
@@ -30,6 +42,7 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
   // Seeded from what was saved, so the first render already shows the key and
   // mix this person left the song in rather than flashing the defaults.
   const [mix, setMix] = useState<MixState>(() => toMix(song.settings));
+  const [mode, setMode] = useState<StemMode | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -46,8 +59,30 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
     }),
   );
 
+  /**
+   * Chapter 8's third hard requirement: fall back to two stems when four plus
+   * pitch shifting is too heavy. See capability.ts for why the automatic part
+   * of this is deliberately timid and the switch in the mixer carries the
+   * requirement. Resolved once, before the engine is built - changing mode
+   * rebuilds the graph, which is why it is not something to do casually.
+   */
   useEffect(() => {
-    if (song.stems.length === 0) return;
+    let cancelled = false;
+    resolveMode().then((capability) => {
+      if (!cancelled) setMode(capability.mode);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const chooseMode = useCallback((next: StemMode) => {
+    storeMode(next);
+    setMode(next);
+  }, []);
+
+  useEffect(() => {
+    if (song.stems.length === 0 || mode === null) return;
 
     const engine = new PlayerEngine();
     engineRef.current = engine;
@@ -56,22 +91,21 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
     // Applied before load so the graph is built at the saved key and mix, not
     // adjusted to it a moment later - which would be audible.
     const saved = toMix(song.settings);
+    const applyVolumes = () => {
+      for (const [kind, volume] of Object.entries(channelVolumes(saved, mode))) {
+        engine.setVolume(kind as Channel, volume);
+      }
+    };
     engine.setKey(keyOf(song.settings));
     engine.setTempo(tempoOf(song.settings));
-    for (const [kind, volume] of Object.entries(saved.volumes)) {
-      engine.setVolume(kind as StemKind, volume);
-    }
+    applyVolumes();
 
     engine
-      .load(song.stems.map((stem) => ({ kind: stem.kind, url: stemUrl(stem) })))
-      .then(() => {
-        // load() builds the gain nodes, so the volumes have to be pushed again
-        // for them to take; the engine remembers them across a load for exactly
-        // this reason.
-        for (const [kind, volume] of Object.entries(saved.volumes)) {
-          engine.setVolume(kind as StemKind, volume);
-        }
-      })
+      .load(song.stems.map((stem) => ({ kind: stem.kind, url: stemUrl(stem) })), { mode })
+      // load() builds the gain nodes, so the volumes have to be pushed again
+      // for them to take; the engine remembers them across a load for exactly
+      // this reason.
+      .then(applyVolumes)
       .catch(() => setError(t.player.failed));
 
     return () => {
@@ -79,7 +113,7 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [song.id, song.stems, song.settings, t.player.failed]);
+  }, [song.id, song.stems, song.settings, mode, t.player.failed]);
 
   /**
    * Write whatever is pending when the page is being hidden. A debounce that
@@ -112,12 +146,12 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
       setMix(next);
       const engine = engineRef.current;
       if (engine === null) return;
-      for (const [kind, volume] of Object.entries(next.volumes)) {
-        engine.setVolume(kind as StemKind, volume);
+      for (const [kind, volume] of Object.entries(channelVolumes(next, mode ?? "four"))) {
+        engine.setVolume(kind as Channel, volume);
       }
       saver.current.schedule(toSettings(next, engine.getState().semitones, engine.getState().tempo));
     },
-    [],
+    [mode],
   );
 
   const applyKey = useCallback(
@@ -146,7 +180,7 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
   if (error !== null) {
     return <p className="song-error">{error}</p>;
   }
-  if (state === null || !state.ready) {
+  if (mode === null || state === null || !state.ready) {
     return <p className="hint">{t.player.loading}</p>;
   }
 
@@ -184,9 +218,17 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
       <Mixer
         mix={mix}
         available={song.stems.map((stem) => stem.kind)}
+        mode={mode}
         t={t}
-        onVolume={(kind, volume) => applyMix(setStemVolume(mix, kind, volume))}
+        onVolume={(kind, volume) =>
+          applyMix(
+            kind === "backing"
+              ? setBackingVolume(mix, volume)
+              : setStemVolume(mix, kind as StemKind, volume),
+          )
+        }
         onToggleVocals={() => applyMix(toggleVocals(mix))}
+        onMode={chooseMode}
       />
     </div>
   );

@@ -11,7 +11,8 @@
  * the line again expects 20% back, not full volume.
  */
 
-import type { StemKind } from "./engine.ts";
+import type { Channel, StemKind } from "./engine.ts";
+import { BACKING_PARTS, type StemMode } from "./capability.ts";
 
 export const STEM_ORDER: readonly StemKind[] = ["vocals", "drums", "bass", "other"] as const;
 
@@ -64,4 +65,39 @@ export function toggleVocals(mix: MixState): MixState {
 /** Whole percent, for the label next to a fader. */
 export function asPercent(volume: number): number {
   return Math.round(clamp(volume) * 100);
+}
+
+
+/**
+ * The mix as the *engine* wants it, which depends on how many channels it
+ * loaded.
+ *
+ * The four stem volumes stay canonical whatever the mode. That is what keeps a
+ * mix portable: someone who turns the backing down on a phone and then opens
+ * the same song on a laptop gets four faders that agree with what they did,
+ * rather than a stored "backing: 0.4" nothing else understands.
+ */
+export function channelVolumes(mix: MixState, mode: StemMode): Record<string, number> {
+  if (mode === "four") return { ...mix.volumes };
+  return { vocals: mix.volumes.vocals, backing: backingVolume(mix) };
+}
+
+/** One number for three stems: the average of what they are set to. */
+export function backingVolume(mix: MixState): number {
+  const total = BACKING_PARTS.reduce((sum, kind) => sum + mix.volumes[kind], 0);
+  return Number((total / BACKING_PARTS.length).toFixed(3));
+}
+
+/** Moving the backing fader moves all three underneath it. */
+export function setBackingVolume(mix: MixState, volume: number): MixState {
+  const level = clamp(volume);
+  const volumes = { ...mix.volumes };
+  for (const kind of BACKING_PARTS) volumes[kind] = level;
+  return { ...mix, volumes };
+}
+
+/** What the mixer shows faders for in this mode. */
+export function fadersFor(mode: StemMode, available: readonly StemKind[]): Channel[] {
+  if (mode === "two") return ["vocals", "backing"];
+  return STEM_ORDER.filter((kind) => available.includes(kind));
 }
