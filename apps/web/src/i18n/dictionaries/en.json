@@ -39,6 +39,11 @@
       "other": "Other"
     }
   },
+  "mixer": {
+    "title": "Mixer",
+    "removeVocals": "Remove vocals",
+    "restoreVocals": "Bring vocals back"
+  },
   "library": {
     "title": "My library",
     "empty": "No songs here yet.",

@@ -39,6 +39,11 @@
       "other": "כלים"
     }
   },
+  "mixer": {
+    "title": "מיקסר",
+    "removeVocals": "הסר שירה",
+    "restoreVocals": "החזר שירה"
+  },
   "library": {
     "title": "הספרייה שלי",
     "empty": "אין כאן עדיין שירים.",

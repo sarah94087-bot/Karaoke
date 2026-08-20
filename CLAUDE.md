@@ -391,5 +391,21 @@ From `T-1.12`:
 - The engine's constructor builds nothing (`load()` does), so its ranges and
   clamping are testable in plain Node without Web Audio.
 
+From `T-1.13`:
+
+- `src/lib/player/mix.ts` holds the mixer's rules, apart from the component, so
+  they can be tested. The rule worth having: **pressing "remove vocals" twice
+  puts you back exactly where you were** — someone using the vocals at 20% as a
+  guide track gets 20% back, not full volume.
+- The button and the vocals fader can never contradict each other: dragging the
+  fader to zero *is* removing the vocals, and the button says so.
+- The button is not a fifth fader. Chapter 8 calls it big, and it is: full
+  width, larger than anything else on the screen.
+- Verified live with real stems: the toggle produced four `setTargetAtTime`
+  calls with `tc = 0.0233` (the ~70ms fade phase 0 measured), vocals went to 0
+  with the other three untouched, and 20% survived a remove/restore round trip.
+  Toggling **mid-song** left the clock running straight through — the engine is
+  never touched, which is what T-0.2.2 said and why sync cannot be lost.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.
