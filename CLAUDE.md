@@ -407,5 +407,25 @@ From `T-1.13`:
   Toggling **mid-song** left the clock running straight through — the engine is
   never touched, which is what T-0.2.2 said and why sync cannot be lost.
 
+From `T-1.14`:
+
+- Key gets **buttons**, tempo gets a **slider**. A key is thirteen discrete
+  choices and people step it a semitone at a time until their voice fits; a
+  tempo is continuous and people scrub for it.
+- The displayed value is part of the feature, not decoration — the acceptance
+  criterion says so. `+3` and `−2` carry an explicit sign, because `2` reads as
+  a setting you have to remember rather than a change you made.
+- The controls read from the **engine's** state, not from local copies, so the
+  number on screen and the audio cannot disagree.
+- Verified live mid-song: key stepped to `+3` then `−2` and tempo to 75% then
+  150%, with the clock running straight through (`0:01 → 0:02 → 0:03`), and the
+  worklet receiving `{type: "pitch"}` / `{type: "tempo"}` messages. Stepping
+  past the ends stops at `±6` and disables the button.
+- **Node's type-stripping needs exact import specifiers.** `controls.ts` imports
+  `./engine.ts` **with the extension**, which is why `allowImportingTsExtensions`
+  is on in `tsconfig.json`. Without it `node --test` cannot resolve a relative
+  import that has runtime values in it. (Type-only imports are erased, which is
+  why `mix.ts` never needed this.)
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

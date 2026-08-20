@@ -44,6 +44,13 @@
     "removeVocals": "הסר שירה",
     "restoreVocals": "החזר שירה"
   },
+  "controls": {
+    "key": "סולם",
+    "keyUp": "העלאת סולם בחצי טון",
+    "keyDown": "הורדת סולם בחצי טון",
+    "tempo": "קצב",
+    "reset": "איפוס"
+  },
   "library": {
     "title": "הספרייה שלי",
     "empty": "אין כאן עדיין שירים.",

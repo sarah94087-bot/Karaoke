@@ -44,6 +44,13 @@
     "removeVocals": "Remove vocals",
     "restoreVocals": "Bring vocals back"
   },
+  "controls": {
+    "key": "Key",
+    "keyUp": "Raise the key by a semitone",
+    "keyDown": "Lower the key by a semitone",
+    "tempo": "Tempo",
+    "reset": "Reset"
+  },
   "library": {
     "title": "My library",
     "empty": "No songs here yet.",

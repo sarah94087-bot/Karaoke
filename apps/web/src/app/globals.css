@@ -406,3 +406,75 @@ a.playable-banner:hover {
 .fader[data-silent="true"] .fader-value {
   color: #6a6a80;
 }
+
+/* --- key and tempo -------------------------------------------------------- */
+
+.key-tempo {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.control {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.control-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.control-name {
+  font-weight: 600;
+}
+
+/*
+ * The acceptance criterion is "the value is shown to the user", so it is a
+ * number and not a tick on a slider. Isolated and tabular for the same reason
+ * as the clock: a signed number inside a Hebrew line, changing as you press.
+ */
+.control-value {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--accent);
+  min-inline-size: 3.5rem;
+  text-align: end;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.stepper button {
+  inline-size: 2.5rem;
+  padding: 0.4rem 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.control input[type="range"] {
+  inline-size: 100%;
+  accent-color: var(--accent);
+}
+
+.reset {
+  justify-self: start;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: #2a2a3c;
+  color: var(--muted);
+}

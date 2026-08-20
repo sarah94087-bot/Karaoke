@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { KeyTempo } from "@/components/KeyTempo";
 import { Mixer } from "@/components/Mixer";
 import type { Dictionary } from "@/i18n";
 import { type SongDetail, stemUrl } from "@/lib/api";
@@ -12,9 +13,10 @@ import { formatDuration } from "@/lib/song";
 /**
  * The player, as far as T-1.12 goes: four stems on one clock, with transport.
  *
- * The key and tempo controls are T-1.14. What this screen holds together is the
- * engine (T-1.12) and the mixer (T-1.13): it loads, plays, seeks, and reports a
- * position that comes from the audio clock rather than from a timer.
+ * What this screen holds together is the engine (T-1.12), the mixer (T-1.13)
+ * and the key and tempo controls (T-1.14). Key, tempo and volume all read their
+ * displayed value from the engine's state rather than from local copies, so
+ * there is nothing for the two to disagree about.
  *
  * Note there is no setInterval here for the position. React re-renders because
  * the engine tells it to, which happens when the worklet reports, which happens
@@ -93,6 +95,14 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
         value={Math.floor(state.position)}
         onChange={(event) => seek(Number(event.target.value))}
         aria-label={t.player.clock}
+      />
+
+      <KeyTempo
+        semitones={state.semitones}
+        tempo={state.tempo}
+        t={t}
+        onKey={(value) => engineRef.current?.setKey(value)}
+        onTempo={(value) => engineRef.current?.setTempo(value)}
       />
 
       <Mixer
