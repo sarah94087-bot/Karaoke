@@ -25,7 +25,9 @@ line that quietly moved is not.
 import logging
 import re
 
+from packages.audio.silence import Silence
 from packages.core.lyrics import LineDraft
+from packages.lyrics.align import align
 from packages.providers.transcription import Segment, Transcript
 
 log = logging.getLogger("karuki.lyrics.transcript")
@@ -126,28 +128,13 @@ def clean_segments(segments: list[Segment]) -> list[Segment]:
     return kept
 
 
-def to_lines(segments: list[Segment]) -> list[LineDraft]:
-    """Segments as the lines T-2.1 stores.
+def lines_from(transcript: Transcript, gaps: list[Silence] | None = None) -> list[LineDraft]:
+    """The whole journey: a raw transcript in, karaoke lines out.
 
-    A segment is not always a line - the model splits on pauses, not on verses -
-    but it is the only division there is until T-2.5 aligns against real words,
-    and a singer can see where a line should break far more easily than they can
-    invent the timings.
+    Cleaning first, because a hallucinated segment should not be given a line to
+    sit on, and then `packages/lyrics/align.py`, which is where a segment
+    becomes one or more lines. `gaps` is the silence in the vocals stem, when
+    there is a vocals stem to look at; without it the aligner splits on length
+    alone.
     """
-    return [
-        LineDraft(
-            text=segment.text.strip(),
-            start_ms=segment.start_ms,
-            end_ms=segment.end_ms,
-            words=[
-                {"text": word.text, "start_ms": word.start_ms, "end_ms": word.end_ms}
-                for word in segment.words
-            ],
-        )
-        for segment in segments
-    ]
-
-
-def lines_from(transcript: Transcript) -> list[LineDraft]:
-    """The whole journey: a raw transcript in, lines the player could show out."""
-    return to_lines(clean_segments(transcript.segments))
+    return align(clean_segments(transcript.segments), gaps)

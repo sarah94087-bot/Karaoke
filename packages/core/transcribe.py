@@ -26,6 +26,8 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.audio.decode import decode
+from packages.audio.silence import Silence, silences
 from packages.core.enums import LyricsSource, StemKind
 from packages.core.lyrics import LyricsError, save_lyrics
 from packages.core.models import Lyrics, Song
@@ -98,11 +100,25 @@ def transcribe(
         return None
 
 
+def silences_in(audio: Path) -> list[Silence]:
+    """Where nobody is singing, for the aligner to break lines at. Never raises.
+
+    Only ever asked about the **vocals** stem: silence in a mix means "no
+    instruments either", which is a different question and a much rarer answer.
+    """
+    try:
+        return silences(decode(audio))
+    except Exception:  # noqa: BLE001 - splitting on length alone is a fine fallback
+        log.exception("could not measure the silences in %s", audio.name)
+        return []
+
+
 async def save_transcript(
     session: AsyncSession,
     song_id: uuid.UUID,
     transcript: Transcript,
     source: LyricsSource,
+    gaps: list[Silence] | None = None,
 ) -> Lyrics | None:
     """Store one run as a new version, or nothing if it said nothing.
 
@@ -110,7 +126,7 @@ async def save_transcript(
     the song from `pending` to `missing` and tell the user the words are not
     coming, which - with the second run still to happen - is not true yet.
     """
-    lines = lines_from(transcript)
+    lines = lines_from(transcript, gaps)
     if not lines:
         log.info("the %s run produced no usable lines for song %s", source, song_id)
         return None

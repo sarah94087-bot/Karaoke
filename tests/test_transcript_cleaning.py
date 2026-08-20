@@ -7,12 +7,12 @@ missing is obvious to a singer and easy to type back, where a line that quietly
 moved to the wrong place is not.
 """
 
+from packages.lyrics.align import align
 from packages.lyrics.transcript import (
     MAX_CONSECUTIVE_REPEATS,
     clean_segments,
     is_caption_filler,
     lines_from,
-    to_lines,
 )
 from packages.providers.transcription import Segment, Transcript, Word
 
@@ -112,7 +112,7 @@ def test_a_line_that_comes_back_later_is_not_a_repeat():
 
 
 def test_segments_become_lines_with_their_words():
-    lines = to_lines(
+    lines = align(
         [
             segment(
                 "שתי מילים",

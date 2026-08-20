@@ -32,6 +32,7 @@ from packages.core.transcribe import (
     language_code,
     mix_audio,
     save_transcript,
+    silences_in,
     transcribe,
     vocals_audio,
 )
@@ -231,7 +232,17 @@ async def _transcribe(
         )
         return
 
-    await save_transcript(session, song.id, vocals, LyricsSource.VOCALS_ASR)
+    # T-2.5. A step of its own because chapter 7 gives it one, and because it
+    # is the one place that opens the audio again: the vocals stem is decoded to
+    # find where the singing stops, which is what a segment gets split on.
+    # Whisper's times are never moved by any of it - T-0.5.3 measured the
+    # alternative and it was worse.
+    await jobs.advance(session, job, JobStep.ALIGNING, song)
+    await session.commit()
+    announce(bus, job, song, "progress")
+
+    gaps = await asyncio.to_thread(silences_in, audio)
+    await save_transcript(session, song.id, vocals, LyricsSource.VOCALS_ASR, gaps)
     await session.commit()
 
 

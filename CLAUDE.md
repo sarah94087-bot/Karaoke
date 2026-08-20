@@ -132,9 +132,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.4` done. Next is `T-2.5`:
-alignment — line times for every line, and word times where the confidence is
-high enough.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.5` done. Next is `T-2.6`:
+the lyrics running in the player, with the current line highlighted inside
+100ms of where it is sung.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -677,6 +677,51 @@ From `T-2.4`:
   design), and the song ended with two versions — `mix_asr` at 13 lines and
   `vocals_asr` at 7 — both Hebrew, `lyrics_status: word`.
 - **No test spends a request**, the same rule the GPU has.
+
+From `T-2.5`:
+
+- **No timestamp is ever moved.** `T-0.5.3` tapped a song by hand and compared:
+  raw Whisper missed by 242ms at the median, the energetic aligner built for the
+  job by 372ms and never once landed inside 100ms. Re-anchoring lines to onsets
+  would make the timing worse, so `packages/lyrics/align.py` only ever *splits*.
+- **A segment is not a line, and the split comes from the audio.** `T-0.5.1`
+  found segments running 14.86s→26.46s across four sung phrases; the transcripts
+  measured here have segments of 14.0s, 18.1s and 18.9s.
+  `packages/audio/silence.py` decodes the **vocals stem** and finds the gaps —
+  the one job `T-0.5.3` left the detector after rejecting it for timing.
+- Word gaps could not do that job, and measuring said so: Groq returns word
+  timings that are **contiguous** (p50, p90 and p95 of the gaps between words
+  are all 0ms), so there is nothing to split on inside a segment. That is why
+  the audio is opened again at all.
+- Length is the backstop where the audio has no gap: a continuously sung vocal
+  genuinely has very little silence in it (7–19 gaps ≥350ms per song). A line
+  over 8s or 10 words is split at a word boundary — the *break point* is a
+  guess, the *times* stay measured.
+- **A line whose end would be absurd has no end at all.** One measured case is a
+  single word the model gave a 15.1s duration. `end_ms` was made nullable in
+  T-2.1 precisely so "we do not know" can be said; the player shows the line
+  until the next one starts.
+- **Word-level highlighting is opt-in per line, and phase 0's own threshold
+  decides.** `T-0.5.2` found word timings relatively right and absolutely wrong
+  (first word off by 215–395ms, varying line to line) and warned that a
+  word-level highlight as a default "will look broken". So words survive only
+  when `exp(avg_logprob) ≥ 0.5` — the same usable-word threshold `T-0.4.2` was
+  built on — and the words are in order and cover ≥60% of their line. Everything
+  else keeps its text and its line-level timing, which is D-09 exactly.
+- The silence floor is anchored to the **loud** end (8% of the 90th percentile
+  of frame energy). Anchoring it to the quiet end was tried first and is subtly
+  broken: a percentile of the quiet frames moves with how much silence the song
+  contains, so a long instrumental raises the floor until the singing falls
+  under it — measured as "no gaps found at all" on a song with obvious ones.
+- Aligning is `JobStep.ALIGNING`, reported for real: it is the one step that
+  opens the audio again.
+- Measured on three real songs: 9→14, 31→32 and 36→38 lines, with line lengths
+  p50 3.1–4.8s and p90 4.6–7.3s, and word timings kept on 25/32 to 36/38 lines.
+- Verified end to end on the 45s excerpt: `separating 50` → `encoding 78` →
+  `transcribing_vocals 92` → `ready`, 10 lines at p50 3.3s and max 5.7s, 8 of
+  them with word timings, and the song reporting `lyrics_status: line` because
+  two lines did not qualify — which is the derived-status rule from T-2.1 doing
+  its job.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.
