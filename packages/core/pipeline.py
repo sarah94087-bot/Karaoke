@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core import jobs
+from packages.core.analysis import analyse_song
 from packages.core.enums import JobStep
 from packages.core.events import EventBus, EventType, JobEvent
 from packages.core.models import Job, Song
@@ -155,6 +156,12 @@ async def _separate(
         await session.commit()
         announce(bus, job, song, "progress")
         await record_stems(session, storage, song, result)
+
+        # Tempo and key. Deliberately not its own step: chapter 7's pipeline
+        # does not have one, it takes about two seconds, and it cannot fail the
+        # job. It runs here rather than during ingest so that it does not delay
+        # the moment the song becomes playable.
+        await analyse_song(session, storage, song)
 
     # D-28: four stems on disk is everything the player needs. The lyrics can
     # keep the user waiting; the singing does not have to.

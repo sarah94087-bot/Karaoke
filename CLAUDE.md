@@ -427,5 +427,30 @@ From `T-1.14`:
   import that has runtime values in it. (Type-only imports are erased, which is
   why `mix.ts` never needed this.)
 
+From `T-1.15`:
+
+- BPM and key are detected in `packages/audio/analyse.py` with **numpy only** —
+  tempo from the autocorrelation of a spectral-flux onset envelope, key by
+  correlating a chroma vector against the Krumhansl-Kessler profiles. librosa
+  would bring scipy and numba, a few hundred MB into an image that has to stay
+  deployable, for two functions.
+- **Both read the whole mix, not the stems.** The opposite was tried first, on
+  the plausible story that drums give cleaner onsets and that excluding vocals
+  gives a cleaner chroma. Measured, the mix won every time (song A: `D` at 0.359
+  from the mix against `Am` at 0.033 from `other+bass`, which is not even the
+  same note set). A bass line is mostly roots and octaves, so mixing it in skews
+  the chroma away from the distribution the profiles were calibrated on. The
+  numbers are in `packages/core/analysis.py`.
+- **Key confidence is measured against the best *non-relative* candidate.** C and
+  Am share all seven notes, so comparing against the runner-up reports near-zero
+  confidence for a perfectly clear key. Below `MIN_KEY_CONFIDENCE` nothing is
+  stored — a singer may transpose against this number, so "we do not know" beats
+  a plausible guess.
+- Tempo is folded into 85–165 BPM. 75 and 150 describe the same music and one of
+  them is what a person taps.
+- Analysis runs after the stems are recorded and **cannot fail the job**, on the
+  same reasoning chapter 7 gives for transcription. It is not a `JobStep`:
+  chapter 7's pipeline does not have one and it takes about two seconds.
+
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

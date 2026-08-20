@@ -57,6 +57,11 @@
     "emptyHint": "Once you upload a song it will appear here with its processing state.",
     "requestId": "Request id"
   },
+  "song": {
+    "originalKey": "Original key",
+    "bpm": "Original tempo",
+    "bpmUnit": "BPM"
+  },
   "job": {
     "state": {
       "queued": "Queued",

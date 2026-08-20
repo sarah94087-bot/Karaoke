@@ -478,3 +478,42 @@ a.playable-banner:hover {
   background: #2a2a3c;
   color: var(--muted);
 }
+
+/* --- the song's measured facts -------------------------------------------- */
+
+.song-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-block: 0 1.5rem;
+}
+
+.song-facts div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.song-facts dt {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.song-facts dd {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.fact-value {
+  /* A key like "F#m" and a tempo like "132" are both latin-and-digits inside a
+     Hebrew line. */
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
+.fact-unit {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
