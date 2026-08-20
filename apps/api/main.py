@@ -19,6 +19,7 @@ from packages.core.jobs import recover_interrupted
 from packages.providers.lyrics_catalogue import get_catalogue
 from packages.providers.separation import get_separator
 from packages.providers.storage import LocalStorage
+from packages.providers.transcription import get_transcriber
 
 from .config import API_PREFIX, settings
 from .errors import install_error_handlers
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             storage=app.state.storage,
             separator=get_separator(settings.separation_backend),
             catalogue=app.state.catalogue,
+            transcriber=get_transcriber(settings.transcription_backend),
         )
 
         # Nothing is running, whatever the table says: jobs run inside this

@@ -70,19 +70,27 @@ class JobState(StrEnum):
 
 
 class JobStep(StrEnum):
-    """The pipeline stages of chapter 7, in order.
+    """The pipeline stages of chapter 7, in the order the job *reports* them.
 
-    Transcription is split because D-29 runs it twice - on the mix immediately,
-    and on the separated vocals afterwards - and picks the better transcript.
-    Knowing which of the two is in flight is the difference between an honest
-    progress screen and a guess.
+    Reports, not runs: D-29 starts the transcription of the mix while the
+    separation is still going, precisely so the words are ready when the stems
+    are. It is only named as a step in the case where the job is actually
+    waiting on it, which is why it sits after `ENCODING` here even though it
+    began long before. A progress bar that goes backwards reads as a bug even
+    when nothing is wrong.
+
+    Transcription is split in two because D-29 runs it twice - on the mix, which
+    is available immediately, and on the separated vocals, which are far better
+    (T-0.4.2 measured the mix returning 39% of the words). Knowing which of the
+    two is in flight is the difference between an honest progress screen and a
+    guess.
     """
 
     INGESTING = "ingesting"
     SEPARATING = "separating"
+    ENCODING = "encoding"
     TRANSCRIBING_MIX = "transcribing_mix"
     TRANSCRIBING_VOCALS = "transcribing_vocals"
-    ENCODING = "encoding"
     ALIGNING = "aligning"
 
 

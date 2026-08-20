@@ -22,20 +22,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus
 from packages.core.models import Job, Song
 
-# Chapter 7's pipeline, in the order the diagram runs it, with the progress each
-# step has reached when it finishes. The numbers follow the measured timings
-# there rather than dividing the bar evenly: separation is the long pole, and
-# encoding comes after the transcripts are picked, not before.
+# Chapter 7's pipeline, with the progress each step has reached when it
+# finishes. The numbers follow the measured timings there rather than dividing
+# the bar evenly: separation is the long pole.
 #
 # The measured shape is PLAYABLE at 0:48-2:15 against READY at 1:08-2:55, so
 # roughly three quarters of the wait is over when the player can open - which is
-# what 78 below is saying.
+# what 78 below is saying. Both transcription steps sit after it because that is
+# where they are *reported*: the mix run starts during the separation (D-29) and
+# is only named when the job ends up waiting for it, and the vocals run cannot
+# start before there are vocals to run on.
 STEP_PROGRESS: dict[JobStep, int] = {
     JobStep.INGESTING: 10,
     JobStep.SEPARATING: 50,
-    JobStep.TRANSCRIBING_MIX: 58,
-    JobStep.TRANSCRIBING_VOCALS: 66,
     JobStep.ENCODING: 78,
+    JobStep.TRANSCRIBING_MIX: 84,
+    JobStep.TRANSCRIBING_VOCALS: 92,
     JobStep.ALIGNING: 100,
 }
 

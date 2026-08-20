@@ -132,9 +132,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.3` done. Next is `T-2.4`:
-running the transcription twice — on the mix and on the vocals — and recording
-which of the two won in `source` (D-29).
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.4` done. Next is `T-2.5`:
+alignment — line times for every line, and word times where the confidence is
+high enough.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -636,6 +636,47 @@ From `T-2.3`:
   `timestamp_granularities[]`.
 - Nothing calls this from the pipeline yet. `T-2.4` is what runs it twice and
   records which transcript won.
+
+From `T-2.4`:
+
+- **D-29 is implemented as phase 0 restated it, not as chapter 7 wrote it.** The
+  spec says "transcribe both and keep the better one"; `T-0.4.2` measured that
+  competition and found there is none — the vocals stem won 3 of 3 and the mix
+  returned **39% of the words**. So the mix is a *stand-in shown early*, the
+  vocals run replaces it whenever it produces anything, and there is no scoring
+  function to go wrong. `packages/core/transcribe.py` opens with that reasoning.
+- The one comparison left is a sanity check with a different question behind it:
+  a vocals run that returns **nothing** keeps the stand-in, because deleting
+  words we have for words we do not is not an improvement.
+- The mix run **starts before the separation** and runs beside it in a thread,
+  which is D-29's actual argument — time, not quality. It never touches the
+  session: the task returns a value and every write happens on the main flow.
+- The pipeline now asks the open database **first** (T-2.2 ran it after
+  separation), because its answer decides whether to transcribe at all. A song
+  LRCLIB knows costs zero requests.
+- `JobStep` was reordered so both transcription steps come **after** `ENCODING`,
+  and `STEP_PROGRESS` with it (10 / 50 / 78 / 84 / 92 / 100). The steps are in
+  the order the job *reports* them, not the order it starts them:
+  `transcribing_mix` is only named when the job is genuinely waiting on it, and
+  a bar that goes backwards reads as a bug even when nothing is wrong.
+- **The language is detected on the mix and then handed to the vocals run.**
+  This is the one that a live run caught and no unit test would have: on a real
+  Hebrew song the isolated vocals stem was detected as **English** and came back
+  transliterated — `Me'onecha, deros na'ador she'cha` — and replaced a perfectly
+  good Hebrew stand-in. The mix, which still has the instruments in it, gets the
+  language right. Passing the hint fixed it; a vocals run that *still* comes
+  back in a different language than the mix is treated as a run that went wrong,
+  and the stand-in stays.
+- Nothing is forced to Hebrew, though. A Hebrew speaker's library has English
+  songs in it, and telling the model they are Hebrew produces Hebrew-shaped
+  nonsense — which is the same failure in the other direction.
+- Verified end to end against the real service, on a 45s excerpt of a Hebrew
+  song with `KARUKI_LYRICS_CATALOGUE=none` to force the transcription path:
+  progress ran `separating 50` → `transcribing_vocals 92` → `ready` (the mix run
+  finished during the separation, so its step was never reported, which is the
+  design), and the song ended with two versions — `mix_asr` at 13 lines and
+  `vocals_asr` at 7 — both Hebrew, `lyrics_status: word`.
+- **No test spends a request**, the same rule the GPU has.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

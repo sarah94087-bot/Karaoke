@@ -25,6 +25,7 @@ from packages.core.pipeline import run_job
 from packages.providers.lyrics_catalogue import LyricsCatalogue, NoCatalogue
 from packages.providers.separation import Separator
 from packages.providers.storage import Storage
+from packages.providers.transcription import NoTranscriber, Transcriber
 
 log = logging.getLogger("karuki.runner")
 
@@ -39,6 +40,9 @@ class JobRunner:
     # The open lyrics database (T-2.2). Defaults to none so that a test which
     # builds a runner by hand never reaches the network.
     catalogue: LyricsCatalogue = field(default_factory=NoCatalogue)
+    # Same reasoning: a runner built by hand in a test transcribes nothing until
+    # it is given something that can.
+    transcriber: Transcriber = field(default_factory=NoTranscriber)
     # Shared with the SSE endpoint: the runner publishes, the stream subscribes.
     events: EventBus = field(default_factory=EventBus)
     _running: dict[uuid.UUID, asyncio.Task[None]] = field(default_factory=dict)
@@ -80,6 +84,7 @@ class JobRunner:
                     song,
                     self.events,
                     catalogue=self.catalogue,
+                    transcriber=self.transcriber,
                 )
             except Exception:
                 # run_job has already recorded the failure on the row; this is

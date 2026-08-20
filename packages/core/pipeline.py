@@ -22,11 +22,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core import jobs
 from packages.core.analysis import analyse_song
-from packages.core.enums import JobStep
+from packages.core.enums import JobStep, LyricsSource
 from packages.core.events import EventBus, EventType, JobEvent
+from packages.core.lyrics import get_lyrics
 from packages.core.lyrics_lookup import lookup_lyrics
 from packages.core.models import Job, Song
 from packages.core.stems import record_stems, separate, source_for
+from packages.core.transcribe import (
+    language_code,
+    mix_audio,
+    save_transcript,
+    transcribe,
+    vocals_audio,
+)
 from packages.providers.lyrics_catalogue import LyricsCatalogue
 from packages.providers.separation import (
     SeparationError,
@@ -34,6 +42,7 @@ from packages.providers.separation import (
     Separator,
 )
 from packages.providers.storage import Storage
+from packages.providers.transcription import Transcriber, Transcript
 
 log = logging.getLogger("karuki.pipeline")
 
@@ -74,6 +83,7 @@ async def run_job(
     song: Song,
     bus: EventBus | None = None,
     catalogue: LyricsCatalogue | None = None,
+    transcriber: Transcriber | None = None,
 ) -> Job:
     """Take a queued job to `ready`, or to `failed` with a code.
 
@@ -85,8 +95,25 @@ async def run_job(
     await session.commit()
     announce(bus, job, song, "progress")
 
+    mix_run: asyncio.Task[Transcript | None] | None = None
     try:
         await _ingest(session, storage, job, song, bus)
+
+        # D-08's order: the open database first, because a song somebody has
+        # already timed by hand beats anything a model will produce, and it
+        # costs one HTTP call. Moved ahead of the separation in T-2.4 so that
+        # its answer can decide whether to transcribe at all.
+        if catalogue is not None:
+            await lookup_lyrics(session, song, catalogue)
+            await session.commit()
+
+        # D-29, and the only reason the mix is transcribed at all: it starts now
+        # and runs while Demucs works, so by the time the stems exist there are
+        # already words. Started as a task rather than awaited - the separation
+        # is the long pole and nothing should wait on this.
+        if transcriber is not None and await _needs_words(session, song):
+            mix_run = _start_mix_transcription(storage, song, transcriber)
+
         await _separate(session, storage, separator, job, song, bus)
     except PipelineError as exc:
         log.warning("job %s failed at %s: %s", job.id, job.current_step, exc)
@@ -101,19 +128,111 @@ async def run_job(
         announce(bus, job, song, "failed")
         raise PipelineError("internal_error", str(exc)) from exc
 
-    # D-08's first source of lyrics: a song somebody has already timed by hand.
-    # Deliberately outside the try - and not a JobStep - for the same reasons
-    # the analysis in T-1.15 is neither: chapter 7's pipeline has no step for
-    # it, it is one HTTP call, and it cannot fail the job. It runs after the
-    # song is playable, so the singing never waits for it.
-    if catalogue is not None:
-        await lookup_lyrics(session, song, catalogue)
-        await session.commit()
+    # Everything from here is lyrics, and chapter 7 is explicit that none of it
+    # can fail the job: the stems are written, the song is playable, and the
+    # worst outcome is words the user types themselves.
+    if transcriber is not None:
+        await _transcribe(session, storage, job, song, transcriber, mix_run, bus)
 
     await jobs.finish(session, job, song)
     await session.commit()
     announce(bus, job, song, "ready")
     return job
+
+
+async def _needs_words(session: AsyncSession, song: Song) -> bool:
+    """False when something already wrote lyrics for this song.
+
+    Normally that is the open database (T-2.2). Transcribing anyway would spend
+    a request out of the daily quota to produce something worse than what is
+    already stored.
+    """
+    return await get_lyrics(session, song.id) is None
+
+
+def _start_mix_transcription(
+    storage: Storage, song: Song, transcriber: Transcriber
+) -> asyncio.Task[Transcript | None] | None:
+    audio = mix_audio(storage, song)
+    if audio is None:  # pragma: no cover - _ingest has already checked this
+        return None
+    # The HTTP call blocks, so it goes to a thread; the task only ever returns a
+    # value, and never touches the session - which is not safe to share.
+    return asyncio.create_task(asyncio.to_thread(transcribe, transcriber, audio))
+
+
+async def _transcribe(
+    session: AsyncSession,
+    storage: Storage,
+    job: Job,
+    song: Song,
+    transcriber: Transcriber,
+    mix_run: asyncio.Task[Transcript | None] | None,
+    bus: EventBus | None = None,
+) -> None:
+    """The two runs of D-29, in the order the measurements settled.
+
+    The mix transcript is a stand-in shown early, not a candidate: T-0.4.2 found
+    it returns 39% of the words, and the vocals stem won every song. So the
+    vocals run replaces it whenever it produces anything at all, and no scoring
+    happens here. The one thing that would keep the stand-in is a vocals run
+    that came back with nothing - deleting words we have for words we do not is
+    not an improvement.
+    """
+    if not await _needs_words(session, song):
+        if mix_run is not None:
+            mix_run.cancel()
+        return
+
+    stand_in = None
+    if mix_run is not None:
+        if not mix_run.done():
+            # Only now is this worth naming: the job really is waiting on it.
+            await jobs.advance(session, job, JobStep.TRANSCRIBING_MIX, song)
+            await session.commit()
+            announce(bus, job, song, "progress")
+        stand_in = await mix_run
+        if stand_in is not None:
+            await save_transcript(session, song.id, stand_in, LyricsSource.MIX_ASR)
+            await session.commit()
+            # Chapter 8's "lyrics on the way" state ends here for most songs:
+            # there are words on the screen while the better ones are made.
+            announce(bus, job, song, "progress")
+
+    audio = await vocals_audio(session, storage, song)
+    if audio is None:
+        log.info("song %s has no vocals stem to transcribe", song.id)
+        return
+
+    await jobs.advance(session, job, JobStep.TRANSCRIBING_VOCALS, song)
+    await session.commit()
+    announce(bus, job, song, "progress")
+
+    # The language the mix settled on, handed to the second run. This is not
+    # tidiness, it is a measured fix: on a real Hebrew song the isolated vocals
+    # stem was detected as English and came back transliterated into Latin
+    # letters - `Me'onecha, deros na'ador she'cha` - and replaced a perfectly
+    # good Hebrew stand-in. The mix, which still has the instruments in it, got
+    # the language right.
+    hint = language_code(stand_in.language) if stand_in is not None else None
+
+    vocals = await asyncio.to_thread(transcribe, transcriber, audio, hint)
+    if vocals is None:
+        return
+
+    if stand_in is not None and language_code(vocals.language) != language_code(stand_in.language):
+        # Even with the hint. A run that changed language mid-song is a run that
+        # went wrong, not a song that did, so the stand-in stays.
+        log.info(
+            "song %s: the vocals run came back as %s where the mix heard %s; keeping the mix",
+            song.id,
+            vocals.language,
+            stand_in.language,
+        )
+        return
+
+    await save_transcript(session, song.id, vocals, LyricsSource.VOCALS_ASR)
+    await session.commit()
 
 
 async def _ingest(
