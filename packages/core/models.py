@@ -1,7 +1,8 @@
-"""The tables that exist so far: songs, stems, jobs, user_song_settings.
+"""The tables that exist so far: songs, stems, jobs, user_song_settings,
+lyrics, lyric_lines.
 
-Chapter 5 lists four more (lyrics, lyric_lines, library_items, usage_quota).
-They belong to the tasks that use them and are deliberately not created here.
+Chapter 5 lists two more (library_items, usage_quota). They belong to the tasks
+that use them and are deliberately not created here.
 
 `Job.user_id` is a bare UUID with no foreign key. Users are owned by a managed
 auth provider (D-16), the choice is still open, and a foreign key to a table
@@ -30,7 +31,15 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
-from .enums import JobState, JobStep, LyricsStatus, SongStatus, SourceType, StemKind
+from .enums import (
+    JobState,
+    JobStep,
+    LyricsSource,
+    LyricsStatus,
+    SongStatus,
+    SourceType,
+    StemKind,
+)
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -81,6 +90,9 @@ class Song(Base):
 
     stems: Mapped[list["Stem"]] = relationship(back_populates="song", cascade="all, delete-orphan")
     jobs: Mapped[list["Job"]] = relationship(back_populates="song", cascade="all, delete-orphan")
+    lyrics: Mapped[list["Lyrics"]] = relationship(
+        back_populates="song", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         CheckConstraint(f"source_type IN {tuple(str(v) for v in SourceType)}", name="source_type"),
@@ -204,4 +216,103 @@ class UserSongSettings(Base):
     __table_args__ = (
         CheckConstraint("key_shift BETWEEN -6 AND 6", name="key_shift_range"),
         CheckConstraint("tempo_ratio BETWEEN 0.5 AND 1.5", name="tempo_ratio_range"),
+    )
+
+
+class Lyrics(Base):
+    """One version of a song's words (chapter 5).
+
+    A version, not *the* lyrics: chapter 6 says an edit creates a new version
+    rather than overwriting, and this is where that is enforced. `version`
+    counts from 1 per song and the highest one is what the player opens, so
+    going back to a transcript someone regrets editing is a read, not a
+    restore from a backup that was never taken.
+
+    Deliberately not a column on `songs`. The same song can have an ASR
+    transcript, a corrected version of it, and eventually a database match, and
+    all three have to be able to coexist while the user decides.
+    """
+
+    __tablename__ = "lyrics"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    song_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("songs.id", ondelete="CASCADE"))
+
+    # BCP-47-ish and short. Hebrew is the point of the project, but a Hebrew
+    # singer's library has English songs in it, and the aligner (T-2.5) needs to
+    # be told which.
+    language: Mapped[str] = mapped_column(String(8), default="he")
+    source: Mapped[str] = mapped_column(String(16))
+    # Set by a person saying "these words are right", not by a confidence score.
+    # T-2.4 records *which* transcript won in `source`; this is the human answer
+    # to a different question, and the editor is what sets it.
+    is_verified: Mapped[bool] = mapped_column(default=False)
+    version: Mapped[int] = mapped_column(SmallInteger, default=1)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    song: Mapped[Song] = relationship(back_populates="lyrics")
+    lines: Mapped[list["LyricLine"]] = relationship(
+        back_populates="lyrics",
+        cascade="all, delete-orphan",
+        order_by="LyricLine.index",
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"source IN {tuple(str(v) for v in LyricsSource)}", name="source"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        # What makes "a new version, never an overwrite" true of the data and
+        # not only of the code that writes it. Two concurrent saves cannot both
+        # become version 4; the loser retries and becomes version 5.
+        # Every read is "the newest version of this song", and the index behind
+        # this constraint is the one that answers it - a second index on the
+        # same two columns would be a write cost for nothing.
+        UniqueConstraint("song_id", "version", name="uq_lyrics_song_id_version"),
+    )
+
+
+class LyricLine(Base):
+    """One line, with the timing the player scrolls by.
+
+    Times are milliseconds from the start of the song, integers. Chapter 8 wants
+    the current line highlighted within 100ms, so a float's worth of precision
+    would be pretending, and the audio clock these are compared against is
+    reported in seconds by the worklet - the conversion happens in one place in
+    the browser rather than in the schema.
+
+    `end_ms` is nullable: a line-level alignment that only found starts is a
+    usable karaoke track, and inventing an end from the next line's start would
+    make a guess indistinguishable from a measurement.
+    """
+
+    __tablename__ = "lyric_lines"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    lyrics_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("lyrics.id", ondelete="CASCADE"))
+
+    # Position in the song, 0-based and contiguous. The order the lines are
+    # sung, which is not the order of their ids and - for a line whose timing is
+    # still missing - not the order of their start times either.
+    index: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+
+    start_ms: Mapped[int | None] = mapped_column(Integer)
+    end_ms: Mapped[int | None] = mapped_column(Integer)
+
+    # [{"text": ..., "start_ms": ..., "end_ms": ...}]. Empty when the alignment
+    # is line-level only, which chapter 7 treats as a normal outcome rather than
+    # a failure. JSON rather than a third table: words are only ever read with
+    # their line, never queried across songs, and a table would be a join and a
+    # migration for something the player receives as one blob anyway.
+    words_json: Mapped[list | None] = mapped_column(JSONB)
+
+    lyrics: Mapped[Lyrics] = relationship(back_populates="lines")
+
+    __table_args__ = (
+        CheckConstraint("index >= 0", name="index_positive"),
+        CheckConstraint("start_ms IS NULL OR start_ms >= 0", name="start_ms_positive"),
+        CheckConstraint(
+            "end_ms IS NULL OR start_ms IS NULL OR end_ms >= start_ms", name="end_after_start"
+        ),
+        UniqueConstraint("lyrics_id", "index", name="uq_lyric_lines_lyrics_id_index"),
     )

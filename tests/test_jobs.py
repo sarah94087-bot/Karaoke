@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from packages.core import jobs
 from packages.core.db import create_engine, session_factory
-from packages.core.enums import JobState, JobStep, SongStatus, SourceType
+from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus, SourceType
 from packages.core.jobs import INTERRUPTED, STEP_PROGRESS, InvalidTransition
 from packages.core.models import Job, Song
 
@@ -110,6 +110,19 @@ async def test_finishing_completes_the_song(sessions):
     assert job.current_step is None
     assert job.finished_at is not None
     assert song.status == SongStatus.READY
+
+
+async def test_finishing_without_lyrics_stops_promising_them(sessions):
+    """`pending` is what GET /songs/{id}/lyrics answers 202 on. A finished job
+    that wrote no lyrics has to say `missing`, or the player waits for words
+    that are never coming - which is the pipeline's state until T-2.3."""
+    async with sessions() as session:
+        song, job = await a_song_and_job(session)
+        await jobs.start(session, job)
+
+        await jobs.finish(session, job, song)
+
+    assert song.lyrics_status == LyricsStatus.MISSING
 
 
 async def test_a_failure_records_a_code(sessions):

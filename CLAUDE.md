@@ -122,8 +122,11 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
 Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 (`T-0.2.5`, the phone test — everything for it is built and waiting).
 
-Phase 1 in progress. `T-1.1` through `T-1.6` done. Next is `T-1.7`: the job
-state machine and progress, surviving a restart.
+Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
+library, and a working player.
+
+Phase 2 (lyrics) in progress. `T-2.1` done. Next is `T-2.2`: searching an open
+synchronised-lyrics database, so a well-known song comes back already timed.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -187,8 +190,9 @@ From `T-1.4`:
   Python-only default breaks every insert that bypasses the ORM.
 - `jobs.user_id` has no foreign key: users belong to a managed auth provider and
   `D-16` is undecided.
-- `songs`, `stems`, `jobs` and (from `T-1.16`) `user_song_settings` exist. The
-  other four tables in chapter 5 come with the tasks that use them.
+- `songs`, `stems`, `jobs`, `user_song_settings` (from `T-1.16`) and `lyrics` /
+  `lyric_lines` (from `T-2.1`) exist. The other two tables in chapter 5 come
+  with the tasks that use them.
 - `tests/test_migrations.py` needs a real Postgres and skips without one. It
   drops every table, so it refuses to run unless `DATABASE_URL` points at a
   local host.
@@ -500,6 +504,40 @@ From `T-1.17`:
 - Verified at 375×812: no horizontal overflow, every touch target ≥44px, and
   light mode built **1 worklet node with 2 outputs** and 3 gain nodes instead of
   4 and 5 — half the vocoder work, which is the whole point.
+
+From `T-2.1`:
+
+- `lyrics` is a **version** of a song's words, not the words themselves, and
+  `PUT /songs/{id}/lyrics` answers `201` because it creates one. Chapter 6 says
+  an edit never overwrites; `(song_id, version)` unique is what makes that true
+  of the data and not only of the code that writes it. `GET` takes `?version=`,
+  and every version is listed in the response so the editor can offer "back to
+  what the machine wrote" without a second request.
+- **`GET` answers `202` while `lyrics_status` is `pending`.** D-28 opens the
+  player before the lyrics exist, so "not yet" is a normal answer to a normal
+  request; a `404` would make the client draw a failure for a song that is
+  working as designed. Once the pipeline has given up it is `200` with an empty
+  list — the editor has to open on something (T-2.10).
+- Because of that, `jobs.finish` now flips a still-`pending` song to `missing`.
+  The pipeline has no transcription step until `T-2.3`, and a finished song
+  stuck on `pending` would promise words that are never coming.
+- **`lyrics_status` is derived from the saved lines, never sent by the caller.**
+  `word` needs *every* timed line to carry words — a highlight that works for
+  one verse and then stops looks broken, where line-level throughout looks
+  deliberate. Words with no times are `missing`, not `line`: from the player's
+  side, lyrics it cannot scroll are the same as no lyrics.
+- **A lyrics save fails loudly where a settings save is clamped.** T-1.16 clamps
+  because the player auto-saves and must never break a session; this is a button
+  someone pressed, and quietly rewriting what they typed is worse than saying it
+  did not go in. Blank lines are the exception — a paste has them between verses,
+  so they are dropped, and line indexes are assigned from the list order rather
+  than trusted from the client.
+- `words_json` is a blob, not a third table: words are only ever read with their
+  line and never queried across songs.
+- Verified against the running API: `202` while pending, two saves producing
+  versions 1 and 2 with the first still readable at `?version=1`, `invalid_lyrics`
+  for a line that ends before it starts, the song reporting `lyrics_status: line`,
+  and deleting the song leaving 0 rows in both tables.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

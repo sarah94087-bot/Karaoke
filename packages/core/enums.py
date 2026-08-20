@@ -84,3 +84,19 @@ class JobStep(StrEnum):
     TRANSCRIBING_VOCALS = "transcribing_vocals"
     ENCODING = "encoding"
     ALIGNING = "aligning"
+
+
+class LyricsSource(StrEnum):
+    """Where a set of lyrics came from (chapter 5).
+
+    It is stored per version, not per song, because a song usually has more than
+    one: an ASR transcript that the user then corrected leaves both rows, and
+    "who wrote this line" is the difference between a timing worth trusting and
+    one worth re-running. D-29 runs the transcription twice, on the mix and on
+    the separated vocals, so those two are separate values rather than one `asr`.
+    """
+
+    DB = "db"
+    MIX_ASR = "mix_asr"
+    VOCALS_ASR = "vocals_asr"
+    MANUAL = "manual"

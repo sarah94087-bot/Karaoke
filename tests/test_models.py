@@ -5,8 +5,15 @@ These assert the decisions chapter 5 is explicit about, so that a later
 """
 
 from packages.core.db import NAMING_CONVENTION, Base
-from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus, StemKind
-from packages.core.models import Job, Song, Stem
+from packages.core.enums import (
+    JobState,
+    JobStep,
+    LyricsSource,
+    LyricsStatus,
+    SongStatus,
+    StemKind,
+)
+from packages.core.models import Job, LyricLine, Lyrics, Song, Stem
 
 
 def columns(model: type) -> set[str]:
@@ -15,9 +22,16 @@ def columns(model: type) -> set[str]:
 
 def test_only_the_tables_with_a_task_behind_them_exist():
     """Chapter 5 lists eight tables, and they arrive with the task that uses
-    them: songs/stems/jobs in T-1.4, user_song_settings in T-1.16. Creating one
-    early means migrating it twice."""
-    assert set(Base.metadata.tables) == {"songs", "stems", "jobs", "user_song_settings"}
+    them: songs/stems/jobs in T-1.4, user_song_settings in T-1.16, lyrics and
+    lyric_lines in T-2.1. Creating one early means migrating it twice."""
+    assert set(Base.metadata.tables) == {
+        "songs",
+        "stems",
+        "jobs",
+        "user_song_settings",
+        "lyrics",
+        "lyric_lines",
+    }
 
 
 def test_songs_has_the_fields_chapter_5_lists():
@@ -60,6 +74,40 @@ def test_jobs_has_the_fields_chapter_5_lists():
     }
 
     assert expected <= columns(Job)
+
+
+def test_lyrics_has_the_fields_chapter_5_lists():
+    assert {"id", "song_id", "language", "source", "is_verified", "version"} <= columns(Lyrics)
+
+
+def test_lyric_lines_has_the_fields_chapter_5_lists():
+    expected = {"id", "lyrics_id", "index", "text", "start_ms", "end_ms", "words_json"}
+
+    assert expected <= columns(LyricLine)
+
+
+def test_a_song_can_only_have_one_row_per_lyrics_version():
+    """What makes "an edit creates a version, never an overwrite" true of the
+    data rather than only of the code that writes it."""
+    uniques = {
+        tuple(sorted(c.name for c in constraint.columns))
+        for constraint in Lyrics.__table__.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+
+    assert ("song_id", "version") in uniques
+
+
+def test_a_line_can_be_timed_or_not():
+    """Chapter 7 treats untimed lyrics as a normal outcome - the worst case is
+    words with no timing and an invitation to the editor, not a failure."""
+    assert LyricLine.__table__.c.start_ms.nullable
+    assert LyricLine.__table__.c.words_json.nullable
+
+
+def test_deleting_a_song_takes_its_lyrics_and_their_lines_with_it():
+    for table in (Lyrics.__table__, LyricLine.__table__):
+        assert all(fk.ondelete == "CASCADE" for fk in table.foreign_keys)
 
 
 def test_is_playable_is_its_own_column():
@@ -111,6 +159,7 @@ def test_enum_vocabularies_match_the_spec():
     assert "missing" in list(LyricsStatus), "a failed transcription is not a failed job"
     assert "failed" in list(SongStatus)
     assert "failed" in list(JobState)
+    assert [str(s) for s in LyricsSource] == ["db", "mix_asr", "vocals_asr", "manual"]
 
 
 def test_transcription_steps_are_distinguishable():

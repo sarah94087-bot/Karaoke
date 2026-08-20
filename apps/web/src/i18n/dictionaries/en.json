@@ -112,6 +112,10 @@
     "internal_error": "Something went wrong on our side. You can try again.",
     "stem_not_found": "One of the song's stems was not found.",
     "stem_missing": "The stem file is no longer in storage. The song needs processing again.",
+    "invalid_lyrics": "The lyrics were not saved: a line has a timing that cannot be right. Check the lines and try again.",
+    "too_many_lyric_lines": "That is too many lines for one song. Up to 1000 can be saved.",
+    "lyrics_save_conflict": "Another save of these lyrics landed a moment before yours. Try saving again.",
+    "lyrics_version_not_found": "That version of the lyrics does not exist.",
     "unknown": "Something went wrong. You can try again."
   }
 }

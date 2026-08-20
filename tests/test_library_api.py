@@ -185,13 +185,18 @@ def test_only_the_most_recent_job_is_reported(client: TestClient, tmp_path: Path
 
 
 def test_the_lyrics_status_is_visible(client: TestClient, tmp_path: Path):
-    """Chapter 8's library shows whether a song has lyrics yet."""
+    """Chapter 8's library shows whether a song has lyrics yet.
+
+    `missing` rather than `pending` once the job is done: the pipeline has no
+    transcription step until T-2.3, and `pending` is the state the lyrics
+    endpoint answers 202 on - it has to mean "still coming".
+    """
     job_id = upload(client, synth(tmp_path / "a.mp3"))["job_id"]
     settle(client, job_id)
 
     (song,) = client.get(SONGS).json()["songs"]
 
-    assert song["lyrics_status"] == "pending"
+    assert song["lyrics_status"] == "missing"
 
 
 def test_paging_is_available_for_when_the_library_grows(client: TestClient, tmp_path: Path):

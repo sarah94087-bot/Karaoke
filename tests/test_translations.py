@@ -24,7 +24,7 @@ DICTIONARIES = ROOT / "apps" / "web" / "src" / "i18n" / "dictionaries"
 # Codes raised as `ApiError(...)` or `PipelineError(...)`, found by reading the
 # source rather than by listing them here - a list would be the thing that goes
 # stale, which is exactly what this file exists to catch.
-CODE_CALL = re.compile(r"(?:ApiError|PipelineError)\(\s*[\"']([a-z_]+)[\"']")
+CODE_CALL = re.compile(r"(?:ApiError|PipelineError|LyricsError)\(\s*[\"']([a-z_]+)[\"']")
 AUDIO_ERROR = re.compile(r"AudioError\(\s*[\"']([a-z_]+)[\"']")
 
 SEARCHED = ("apps/api", "packages")
@@ -58,6 +58,7 @@ def test_the_codes_were_actually_found():
     assert len(codes) > 10, f"only found {codes}; the search is not working"
     assert "song_too_long" in codes
     assert "separation_unavailable" in codes
+    assert "invalid_lyrics" in codes
 
 
 @pytest.mark.parametrize("language", ["he", "en"])

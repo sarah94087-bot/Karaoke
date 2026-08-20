@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.core.enums import JobState, JobStep, SongStatus
+from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus
 from packages.core.models import Job, Song
 
 # Chapter 7's pipeline, in the order the diagram runs it, with the progress each
@@ -128,6 +128,13 @@ async def finish(session: AsyncSession, job: Job, song: Song) -> Job:
     job.current_step = None
     job.finished_at = _now()
     song.status = str(SongStatus.READY)
+    if song.lyrics_status == LyricsStatus.PENDING:
+        # The pipeline is done and nothing wrote any lyrics - which is exactly
+        # where the pipeline stands until T-2.3 adds transcription. `pending`
+        # has to mean "still coming", because that is what GET /songs/{id}/lyrics
+        # answers 202 on; leaving it set on a finished song would promise words
+        # that are never going to arrive.
+        song.lyrics_status = str(LyricsStatus.MISSING)
     await session.flush()
     return job
 

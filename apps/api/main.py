@@ -23,7 +23,7 @@ from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
 from .request_id import HEADER
-from .routers import jobs, songs, system
+from .routers import jobs, lyrics, songs, system
 from .runner import JobRunner
 
 log = logging.getLogger("karuki.api")
@@ -111,6 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(system.router, prefix=API_PREFIX)
     app.include_router(songs.router, prefix=API_PREFIX)
     app.include_router(jobs.router, prefix=API_PREFIX)
+    app.include_router(lyrics.router, prefix=API_PREFIX)
     # Same handler, unprefixed and unlisted: the container HEALTHCHECK and the
     # external keep-alive cron are configured once and should not have to be
     # re-pointed when the API version prefix moves.
