@@ -187,8 +187,8 @@ From `T-1.4`:
   Python-only default breaks every insert that bypasses the ORM.
 - `jobs.user_id` has no foreign key: users belong to a managed auth provider and
   `D-16` is undecided.
-- Only `songs`, `stems`, `jobs` exist. The other five tables in chapter 5 come
-  with the tasks that use them.
+- `songs`, `stems`, `jobs` and (from `T-1.16`) `user_song_settings` exist. The
+  other four tables in chapter 5 come with the tasks that use them.
 - `tests/test_migrations.py` needs a real Postgres and skips without one. It
   drops every table, so it refuses to run unless `DATABASE_URL` points at a
   local host.
@@ -451,6 +451,27 @@ From `T-1.15`:
 - Analysis runs after the stems are recorded and **cannot fail the job**, on the
   same reasoning chapter 7 gives for transcription. It is not a `JobStep`:
   chapter 7's pipeline does not have one and it takes about two seconds.
+
+From `T-1.16`:
+
+- `user_song_settings`, keyed on **`(user_id, song_id)`** rather than a surrogate
+  id. There is exactly one row per person per song by definition, and saying so
+  in the key means the upsert cannot create a second one.
+- The settings come back **with the song**, so opening one is a single request —
+  the player needs them before it builds the graph, or you hear it adjust.
+- **Out-of-range values are clamped, not rejected.** The player saves on every
+  change, and a save must never fail a user's session: a tempo of 1.5000001 from
+  a float slider is stored as 1.5, not turned into a 422 an auto-save cannot
+  report. The DB `CHECK` constraints are the backstop.
+- Chapter 5's "saved automatically on every change" cannot be literal — one
+  fader drag is an event per pixel. `src/lib/player/persist.ts` coalesces to one
+  save per ~600ms, and flushes on `visibilitychange`/`pagehide` so closing the
+  tab straight after a change does not lose it.
+- `vocalsRemoved` is **derived** from a stored volume of 0, never stored, so the
+  button and the fader cannot disagree after a hand-edited row.
+- Verified in a browser: set key −4, tempo 85%, vocals 20%, drums 60%, reloaded
+  the page, and got all four back — with remove/restore returning to 20% and the
+  gain nodes at `[0.2, 0.6, 1, 1]`, so the engine holds them and not just the UI.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

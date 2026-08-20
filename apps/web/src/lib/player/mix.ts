@@ -11,7 +11,7 @@
  * the line again expects 20% back, not full volume.
  */
 
-import type { StemKind } from "./engine";
+import type { StemKind } from "./engine.ts";
 
 export const STEM_ORDER: readonly StemKind[] = ["vocals", "drums", "bass", "other"] as const;
 

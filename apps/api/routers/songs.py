@@ -32,7 +32,8 @@ from packages.audio.normalize import (
 )
 from packages.core import jobs as job_service
 from packages.core.enums import SongStatus, SourceType, StemKind
-from packages.core.models import Job, Song, Stem
+from packages.core.models import Job, Song, Stem, UserSongSettings
+from packages.core.settings import get_settings, save_settings
 from packages.core.stems import stems_for
 from packages.providers.storage import Storage, StorageError
 
@@ -214,6 +215,36 @@ class StemLink(BaseModel):
     bytes: int
 
 
+class PlayerSettings(BaseModel):
+    """How this person likes to sing this song (chapter 5).
+
+    The ranges are documented but not validated, deliberately. The player saves
+    on every change, and a save must never fail a user's session - a tempo of
+    1.5000001 arriving from a float slider should be stored as 1.5, not turned
+    into a 422 that the auto-save has no way to report. Out-of-range values are
+    clamped in packages/core/settings.py, and the database's CHECK constraints
+    are the backstop.
+    """
+
+    key_shift: int = Field(default=0, description="Semitones. Chapter 8's range is -6..+6.")
+    tempo_ratio: float = Field(default=1.0, description="Chapter 8's range is 0.5..1.5.")
+    stem_volumes: dict[str, float] | None = Field(
+        default=None, description='Per stem, 0..1. e.g. {"vocals": 0}'
+    )
+    lyric_offset_ms: int = Field(default=0, description="Phase 2; stored now, unused so far.")
+
+
+def _as_settings(row: UserSongSettings | None) -> PlayerSettings:
+    if row is None:
+        return PlayerSettings()
+    return PlayerSettings(
+        key_shift=row.key_shift,
+        tempo_ratio=float(row.tempo_ratio),
+        stem_volumes=row.stem_volumes_json,
+        lyric_offset_ms=row.lyric_offset_ms,
+    )
+
+
 class SongDetail(BaseModel):
     """A song and its four stems - everything the player needs to open."""
 
@@ -227,6 +258,10 @@ class SongDetail(BaseModel):
     original_key: str | None
     bpm: float | None
     stems: list[StemLink]
+    settings: PlayerSettings = Field(
+        description="Saved player settings, or the defaults. Sent with the song so opening one "
+        "is a single request rather than two."
+    )
 
 
 @router.get(
@@ -243,6 +278,7 @@ async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
         raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
 
     found = await stems_for(session, song.id)
+    saved = await get_settings(session, uuid.UUID(settings.dev_user_id), song.id)
     order = {str(kind): index for index, kind in enumerate(StemKind)}
     return SongDetail(
         id=song.id,
@@ -254,6 +290,7 @@ async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
         lyrics_status=song.lyrics_status,
         original_key=song.original_key,
         bpm=float(song.bpm) if song.bpm is not None else None,
+        settings=_as_settings(saved),
         stems=[
             StemLink(
                 kind=stem.kind,
@@ -264,6 +301,36 @@ async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
             for stem in sorted(found, key=lambda stem: order.get(stem.kind, 99))
         ],
     )
+
+
+@router.put(
+    "/songs/{song_id}/settings",
+    response_model=PlayerSettings,
+    summary="Save the player settings for a song",
+)
+async def put_settings(
+    session: SessionDep, song_id: uuid.UUID, body: PlayerSettings
+) -> PlayerSettings:
+    """Chapter 6 calls this `PUT /library/{song_id}/settings`; that path is
+    per-user and needs D-16, and the body is the same either way.
+
+    Called on every change in the player, so it is an upsert: two saves can be
+    in flight at once - a fader moved while a key change is still posting - and
+    a read-modify-write would let the older one win.
+    """
+    if await session.get(Song, song_id) is None:
+        raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
+
+    saved = await save_settings(
+        session,
+        uuid.UUID(settings.dev_user_id),
+        song_id,
+        key_shift=body.key_shift,
+        tempo_ratio=body.tempo_ratio,
+        stem_volumes=body.stem_volumes,
+        lyric_offset_ms=body.lyric_offset_ms,
+    )
+    return _as_settings(saved)
 
 
 @router.get(

@@ -1,8 +1,7 @@
-"""The three tables T-1.4 covers: songs, stems, jobs.
+"""The tables that exist so far: songs, stems, jobs, user_song_settings.
 
-Chapter 5 lists five more (lyrics, lyric_lines, library_items,
-user_song_settings, usage_quota). They belong to the tasks that use them and are
-deliberately not created here.
+Chapter 5 lists four more (lyrics, lyric_lines, library_items, usage_quota).
+They belong to the tasks that use them and are deliberately not created here.
 
 `Job.user_id` is a bare UUID with no foreign key. Users are owned by a managed
 auth provider (D-16), the choice is still open, and a foreign key to a table
@@ -15,6 +14,7 @@ from datetime import datetime
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -25,6 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -160,4 +161,47 @@ class Job(Base):
         # query that runs on every progress poll and every quota check.
         Index("ix_jobs_user_id_state", "user_id", "state"),
         Index("ix_jobs_song_id", "song_id"),
+    )
+
+
+class UserSongSettings(Base):
+    """How one person likes to sing one song (chapter 5).
+
+    Saved automatically from the player on every change, which is what makes the
+    key worth having: coming back to a song a week later and finding it already
+    in your range is the difference between a tool and a toy.
+
+    The primary key is (user_id, song_id) rather than a surrogate id. There is
+    exactly one row per person per song by definition, and saying so in the key
+    means an upsert cannot create a second one.
+    """
+
+    __tablename__ = "user_song_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    song_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("songs.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # Chapter 8's ranges. Constrained here as well as in the player, because a
+    # stored +40 would be applied by some future client that trusts the row.
+    key_shift: Mapped[int] = mapped_column(SmallInteger, default=0)
+    tempo_ratio: Mapped[float] = mapped_column(Float, default=1.0)
+
+    # {"vocals": 0.0, "drums": 1.0, ...}. JSON rather than four columns because
+    # the set of stems is a property of the separation model (D-05/D-06), and a
+    # model that returns five stems should not need a migration.
+    stem_volumes_json: Mapped[dict | None] = mapped_column(JSONB)
+
+    # Phase 2, when there are lyrics to nudge. The column exists now because
+    # chapter 5 lists it and adding it later is a migration for nothing.
+    lyric_offset_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint("key_shift BETWEEN -6 AND 6", name="key_shift_range"),
+        CheckConstraint("tempo_ratio BETWEEN 0.5 AND 1.5", name="tempo_ratio_range"),
     )

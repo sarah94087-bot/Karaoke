@@ -134,6 +134,13 @@ export interface StemLink {
   bytes: number;
 }
 
+export interface PlayerSettings {
+  key_shift: number;
+  tempo_ratio: number;
+  stem_volumes: Record<string, number> | null;
+  lyric_offset_ms: number;
+}
+
 export interface SongDetail {
   id: string;
   title: string;
@@ -145,6 +152,9 @@ export interface SongDetail {
   original_key: string | null;
   bpm: number | null;
   stems: StemLink[];
+  /** Saved settings, or the defaults. Sent with the song so opening one is a
+   *  single request rather than two. */
+  settings: PlayerSettings;
 }
 
 export function getSong(songId: string): Promise<SongDetail> {
@@ -158,6 +168,17 @@ export function getSong(songId: string): Promise<SongDetail> {
  */
 export function stemUrl(link: StemLink): string {
   return link.url.startsWith("http") ? link.url : `${API_BASE.replace(/\/api\/v1$/, "")}${link.url}`;
+}
+
+export function saveSettings(
+  songId: string,
+  settings: PlayerSettings,
+): Promise<PlayerSettings> {
+  return request<PlayerSettings>(`/songs/${songId}/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
 }
 
 export function getJob(jobId: string): Promise<JobStatus> {

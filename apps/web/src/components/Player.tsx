@@ -5,9 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyTempo } from "@/components/KeyTempo";
 import { Mixer } from "@/components/Mixer";
 import type { Dictionary } from "@/i18n";
-import { type SongDetail, stemUrl } from "@/lib/api";
+import { type SongDetail, saveSettings, stemUrl } from "@/lib/api";
 import { PlayerEngine, type PlayerState, type StemKind } from "@/lib/player/engine";
-import { DEFAULT_MIX, type MixState, setStemVolume, toggleVocals } from "@/lib/player/mix";
+import { type MixState, setStemVolume, toggleVocals } from "@/lib/player/mix";
+import { createSaver, keyOf, tempoOf, toMix, toSettings } from "@/lib/player/persist";
 import { formatDuration } from "@/lib/song";
 
 /**
@@ -26,8 +27,24 @@ import { formatDuration } from "@/lib/song";
 export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
   const engineRef = useRef<PlayerEngine | null>(null);
   const [state, setState] = useState<PlayerState | null>(null);
-  const [mix, setMix] = useState<MixState>(DEFAULT_MIX);
+  // Seeded from what was saved, so the first render already shows the key and
+  // mix this person left the song in rather than flashing the defaults.
+  const [mix, setMix] = useState<MixState>(() => toMix(song.settings));
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Chapter 5 says settings are "saved automatically on every change in the
+   * player". Taken literally that is one request per pixel of fader drag, so
+   * changes are coalesced: every *intent* is saved, once the hand stops moving.
+   */
+  const saver = useRef(
+    createSaver((settings) => {
+      void saveSettings(song.id, settings).catch(() => {
+        // A failed save is not worth interrupting someone mid-song for. The
+        // next change tries again, and the settings are a convenience.
+      });
+    }),
+  );
 
   useEffect(() => {
     if (song.stems.length === 0) return;
@@ -36,8 +53,25 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
     engineRef.current = engine;
     const unsubscribe = engine.subscribe(setState);
 
+    // Applied before load so the graph is built at the saved key and mix, not
+    // adjusted to it a moment later - which would be audible.
+    const saved = toMix(song.settings);
+    engine.setKey(keyOf(song.settings));
+    engine.setTempo(tempoOf(song.settings));
+    for (const [kind, volume] of Object.entries(saved.volumes)) {
+      engine.setVolume(kind as StemKind, volume);
+    }
+
     engine
       .load(song.stems.map((stem) => ({ kind: stem.kind, url: stemUrl(stem) })))
+      .then(() => {
+        // load() builds the gain nodes, so the volumes have to be pushed again
+        // for them to take; the engine remembers them across a load for exactly
+        // this reason.
+        for (const [kind, volume] of Object.entries(saved.volumes)) {
+          engine.setVolume(kind as StemKind, volume);
+        }
+      })
       .catch(() => setError(t.player.failed));
 
     return () => {
@@ -45,7 +79,25 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [song.id, song.stems, t.player.failed]);
+  }, [song.id, song.stems, song.settings, t.player.failed]);
+
+  /**
+   * Write whatever is pending when the page is being hidden. A debounce that
+   * only fires on a timer loses the last change when someone closes the tab
+   * straight after making it - which is exactly when they had finished
+   * adjusting.
+   */
+  useEffect(() => {
+    const pending = saver.current;
+    const flush = () => pending.flush();
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", flush);
+      window.removeEventListener("pagehide", flush);
+      pending.flush();
+    };
+  }, []);
 
   const seek = useCallback((seconds: number) => engineRef.current?.seek(seconds), []);
 
@@ -55,14 +107,38 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
    * that moved keeps the two from drifting apart - "remove vocals" changes one
    * fader, but nothing here has to know that.
    */
-  const applyMix = useCallback((next: MixState) => {
-    setMix(next);
-    const engine = engineRef.current;
-    if (engine === null) return;
-    for (const [kind, volume] of Object.entries(next.volumes)) {
-      engine.setVolume(kind as StemKind, volume);
-    }
-  }, []);
+  const applyMix = useCallback(
+    (next: MixState) => {
+      setMix(next);
+      const engine = engineRef.current;
+      if (engine === null) return;
+      for (const [kind, volume] of Object.entries(next.volumes)) {
+        engine.setVolume(kind as StemKind, volume);
+      }
+      saver.current.schedule(toSettings(next, engine.getState().semitones, engine.getState().tempo));
+    },
+    [],
+  );
+
+  const applyKey = useCallback(
+    (semitones: number) => {
+      const engine = engineRef.current;
+      if (engine === null) return;
+      engine.setKey(semitones);
+      saver.current.schedule(toSettings(mix, engine.getState().semitones, engine.getState().tempo));
+    },
+    [mix],
+  );
+
+  const applyTempo = useCallback(
+    (ratio: number) => {
+      const engine = engineRef.current;
+      if (engine === null) return;
+      engine.setTempo(ratio);
+      saver.current.schedule(toSettings(mix, engine.getState().semitones, engine.getState().tempo));
+    },
+    [mix],
+  );
 
   if (song.stems.length === 0) {
     return <p className="hint">{t.player.notReady}</p>;
@@ -101,8 +177,8 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
         semitones={state.semitones}
         tempo={state.tempo}
         t={t}
-        onKey={(value) => engineRef.current?.setKey(value)}
-        onTempo={(value) => engineRef.current?.setTempo(value)}
+        onKey={applyKey}
+        onTempo={applyTempo}
       />
 
       <Mixer

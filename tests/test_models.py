@@ -13,10 +13,11 @@ def columns(model: type) -> set[str]:
     return {c.name for c in model.__table__.columns}
 
 
-def test_only_the_three_tables_this_task_owns_exist():
-    """Chapter 5 lists eight tables. The other five belong to the tasks that
-    use them; creating them early means migrating them twice."""
-    assert set(Base.metadata.tables) == {"songs", "stems", "jobs"}
+def test_only_the_tables_with_a_task_behind_them_exist():
+    """Chapter 5 lists eight tables, and they arrive with the task that uses
+    them: songs/stems/jobs in T-1.4, user_song_settings in T-1.16. Creating one
+    early means migrating it twice."""
+    assert set(Base.metadata.tables) == {"songs", "stems", "jobs", "user_song_settings"}
 
 
 def test_songs_has_the_fields_chapter_5_lists():

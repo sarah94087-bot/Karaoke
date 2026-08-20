@@ -34,7 +34,7 @@ def test_migration_runs_up_and_down_cleanly(connect, alembic):
     assert public_tables(connect) == set()
 
     alembic("upgrade", "head")
-    assert public_tables(connect) == {"songs", "stems", "jobs"}
+    assert public_tables(connect) == {"songs", "stems", "jobs", "user_song_settings"}
 
     alembic("downgrade", "base")
     assert public_tables(connect) == set(), "downgrade left tables behind"
