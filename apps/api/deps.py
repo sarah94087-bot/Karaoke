@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from packages.providers.lyrics_catalogue import LyricsCatalogue, NoCatalogue
 from packages.providers.storage import Storage
 
 from .errors import ApiError
@@ -49,6 +50,15 @@ def get_sessions(request: Request) -> async_sessionmaker[AsyncSession]:
     return factory
 
 
+def get_catalogue(request: Request) -> LyricsCatalogue:
+    """The open lyrics database, or a stand-in that finds nothing.
+
+    Unlike storage and the database, a missing catalogue is not a 503: the app
+    works without one, it just cannot offer somebody else's timings.
+    """
+    return getattr(request.app.state, "catalogue", None) or NoCatalogue()
+
+
 def get_runner(request: Request) -> JobRunner:
     runner: JobRunner | None = getattr(request.app.state, "runner", None)
     if runner is None:
@@ -64,3 +74,4 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
 RunnerDep = Annotated[JobRunner, Depends(get_runner)]
 SessionsDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_sessions)]
+CatalogueDep = Annotated[LyricsCatalogue, Depends(get_catalogue)]

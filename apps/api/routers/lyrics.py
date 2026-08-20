@@ -1,7 +1,8 @@
 """Chapter 6's two lyrics endpoints (T-2.1).
 
-    GET /songs/{id}/lyrics   timed lines; 202 while they are still being made
-    PUT /songs/{id}/lyrics   a manual edit - a new version, never an overwrite
+    GET  /songs/{id}/lyrics          timed lines; 202 while they are still being made
+    PUT  /songs/{id}/lyrics          a manual edit - a new version, never an overwrite
+    POST /songs/{id}/lyrics/search   ask the open lyrics database again (T-2.2)
 
 The 202 is the part worth reading twice. D-28 opens the player before the lyrics
 exist, so "we do not have them yet" is a normal answer to a normal request, not
@@ -27,9 +28,10 @@ from packages.core.lyrics import (
     list_versions,
     save_lyrics,
 )
+from packages.core.lyrics_lookup import lookup_lyrics
 from packages.core.models import LyricLine, Lyrics, Song
 
-from ..deps import SessionDep
+from ..deps import CatalogueDep, SessionDep
 from ..errors import ApiError
 
 router = APIRouter(tags=["lyrics"])
@@ -272,3 +274,33 @@ async def write_lyrics(session: SessionDep, song_id: uuid.UUID, body: LyricsIn) 
 # Referenced in the OpenAPI description above; kept here so the limit is written
 # once and the docs cannot drift from the code that enforces it.
 write_lyrics.__doc__ = (write_lyrics.__doc__ or "") + f"\n\nAt most {MAX_LINES} lines."
+
+
+@router.post(
+    "/songs/{song_id}/lyrics/search",
+    response_model=SongLyrics,
+    status_code=status.HTTP_201_CREATED,
+    summary="Look this song up in the open lyrics database",
+)
+async def search_lyrics(
+    session: SessionDep, catalogue: CatalogueDep, song_id: uuid.UUID
+) -> SongLyrics:
+    """Chapter 6's `reprocess`, for the one stage that costs nothing to re-run.
+
+    The pipeline already does this once (D-08), so this is for the song that was
+    processed before the title was fixed, or before the database had it. A match
+    lands as a new `db` version, which is why running it after somebody has
+    edited by hand is safe: their version is still there, one behind.
+    """
+    song = await _song_or_404(session, song_id)
+
+    found = await lookup_lyrics(session, song, catalogue, replace_existing=True)
+    if found is None or found.lyrics is None:
+        raise ApiError(
+            "lyrics_match_not_found",
+            f"no timed lyrics found for {song.title!r}",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    await session.refresh(song)
+    return _as_lyrics(song, found.lyrics, await list_versions(session, song_id))

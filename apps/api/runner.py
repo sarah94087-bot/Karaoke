@@ -22,6 +22,7 @@ from packages.core import jobs as job_service
 from packages.core.events import EventBus
 from packages.core.models import Song
 from packages.core.pipeline import run_job
+from packages.providers.lyrics_catalogue import LyricsCatalogue, NoCatalogue
 from packages.providers.separation import Separator
 from packages.providers.storage import Storage
 
@@ -35,6 +36,9 @@ class JobRunner:
     sessions: async_sessionmaker[AsyncSession]
     storage: Storage
     separator: Separator
+    # The open lyrics database (T-2.2). Defaults to none so that a test which
+    # builds a runner by hand never reaches the network.
+    catalogue: LyricsCatalogue = field(default_factory=NoCatalogue)
     # Shared with the SSE endpoint: the runner publishes, the stream subscribes.
     events: EventBus = field(default_factory=EventBus)
     _running: dict[uuid.UUID, asyncio.Task[None]] = field(default_factory=dict)
@@ -68,7 +72,15 @@ class JobRunner:
                 log.warning("job %s has no song", job_id)
                 return
             try:
-                await run_job(session, self.storage, self.separator, job, song, self.events)
+                await run_job(
+                    session,
+                    self.storage,
+                    self.separator,
+                    job,
+                    song,
+                    self.events,
+                    catalogue=self.catalogue,
+                )
             except Exception:
                 # run_job has already recorded the failure on the row; this is
                 # only so the traceback is not swallowed by the task.

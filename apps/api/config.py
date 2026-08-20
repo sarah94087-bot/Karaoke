@@ -58,6 +58,14 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_SEPARATION_BACKEND", "local")
     )
 
+    # The open synchronised-lyrics database (D-08, T-2.2). On by default,
+    # unlike the separation backend: this is a free read of a public database
+    # with no account behind it, and skipping it means paying a transcription
+    # for a song somebody already timed by hand. "none" turns it off.
+    lyrics_catalogue: str = field(
+        default_factory=lambda: os.getenv("KARUKI_LYRICS_CATALOGUE", "lrclib")
+    )
+
     # D-16 (which managed auth provider) is undecided, so phase 1 attributes
     # every job to one local user. Chapter 6's Bearer token replaces this; the
     # column it fills is already there and already has no foreign key.

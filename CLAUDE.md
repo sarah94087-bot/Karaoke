@@ -125,8 +125,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` done. Next is `T-2.2`: searching an open
-synchronised-lyrics database, so a well-known song comes back already timed.
+Phase 2 (lyrics) in progress. `T-2.1` and `T-2.2` done. Next is `T-2.3`: the
+client for the transcription service, for the songs the open database does not
+have.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -538,6 +539,54 @@ From `T-2.1`:
   versions 1 and 2 with the first still readable at `?version=1`, `invalid_lyrics`
   for a line that ends before it starts, the song reporting `lyrics_status: line`,
   and deleting the song leaving 0 rows in both tables.
+
+From `T-2.2`:
+
+- The open database is **LRCLIB** (`packages/providers/lyrics_catalogue.py`): no
+  account, no key, so no card. It is asked over `urllib`, not httpx — one GET,
+  and the API image has to stay small. `truststore` is imported only if present,
+  which is what makes it work on this machine's TLS inspection and cost nothing
+  in the Linux container.
+- **On by default**, unlike the separation backend. The reasoning that keeps
+  `local` separation the default — a stray run spends real credit — does not
+  apply to a free read of a public database. `KARUKI_LYRICS_CATALOGUE=none`
+  turns it off.
+- The lookup runs in the pipeline after the song is playable and is **not a
+  `JobStep`**, for the same reasons the T-1.15 analysis is not one: chapter 7
+  has no step for it, it is one HTTP call, and it cannot fail the job. A
+  catalogue that is down produces `lyrics_status: missing`, not a failed job.
+- `POST /songs/{id}/lyrics/search` is the manual re-run, for a song processed
+  before its title was fixed. It lands as a new `db` version, so running it
+  after somebody has edited by hand cannot destroy their work.
+- **Hebrew needed two changes that only a live search would have shown:**
+  - LRCLIB stores Hebrew songs under a Hebrew title with a **transliterated**
+    artist — `ממעמקים` by `Idan Raichel`. Sending `עידן רייכל` matches nothing.
+    Every reading is therefore asked twice, with the artist and without: hit
+    rate on ten well-known Hebrew songs went from **1 to 5**.
+  - Comparing a Hebrew artist against a Latin one gives about zero, which reads
+    as evidence *against* the right song. `comparable_artists` calls that pair
+    incomparable, and a match with no comparable artist then has to be backed by
+    the measured duration and a near-exact title.
+- **Two false positives were found live and closed, both about precision:**
+  - A row called `שביר` scored 0.95 against the whole filename `ריטה - שביר`,
+    because the title is one of its words — true of every song whose name
+    appears anywhere in a filename. Title containment is now one-directional:
+    the extra words may be the database's (`(Remastered)`), never ours.
+  - `שביר` by `אריק איינשטיין` then still passed at 0.77, a perfect title
+    outvoting an artist at 0.33. A *different* artist is not weaker evidence for
+    this song, it is evidence for another one, so it is a veto rather than a low
+    score. Two candidates that our evidence cannot tell apart return nothing.
+- Duration is the strongest signal we have, because ours is measured off the
+  normalised audio rather than claimed. ±3s: beyond that it is a different cut
+  and every line in the second half sits wrong.
+- Verified against the real service: 6 of 10 well-known songs came back timed
+  (`עוף גוזל` 38 lines, `ממעמקים` 55, `יו יה` 78, `רכבת לילה לקהיר` 12,
+  `מחכים למשיח` 87, `Bohemian Rhapsody` 50), the four misses are genuinely not
+  in the database, and `ריטה - שביר` is refused rather than answered with
+  somebody else's song. **No test touches the network** — the catalogue is a
+  seam so that stays true.
+- Hebrew coverage being about half is the reason `T-2.3` exists and is not a
+  disappointment: the database is the free path, transcription is the fallback.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

@@ -16,10 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from packages.core import jobs
 from packages.core.db import create_engine, session_factory
-from packages.core.enums import JobState, JobStep, SongStatus, SourceType
+from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus, SourceType
+from packages.core.lyrics import get_lyrics
 from packages.core.models import Job, Song
 from packages.core.pipeline import run_job
 from packages.core.stems import normalised_key, stems_for
+from packages.providers.lyrics_catalogue import Candidate, CatalogueError
 from packages.providers.separation import (
     STEM_NAMES,
     Separated,
@@ -55,6 +57,34 @@ class FailingSeparator:
 
     def separate(self, source: Path, destination: Path) -> Separated:
         raise self.error
+
+
+LRC = "[00:05.00]שורה ראשונה\n[00:09.00]שורה שנייה\n"
+
+
+class StubCatalogue:
+    """A lyrics database that always knows the song, or always fails."""
+
+    name = "stub"
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+
+    def search(self, title: str, artist: str | None = None) -> list[Candidate]:
+        if self.error is not None:
+            raise self.error
+        return [
+            Candidate(
+                title="שיר",
+                artist=None,
+                album=None,
+                duration_sec=100.0,
+                synced_lyrics=LRC,
+                instrumental=False,
+                remote_id="1",
+                provider=self.name,
+            )
+        ]
 
 
 @pytest.fixture
@@ -129,6 +159,43 @@ async def test_the_four_stems_are_recorded(sessions, storage, tmp_path):
         found = await stems_for(session, song.id)
 
     assert {stem.kind for stem in found} == set(STEM_NAMES)
+
+
+async def test_a_song_the_database_knows_arrives_already_timed(sessions, storage, tmp_path):
+    """T-2.2 inside the pipeline: D-08 asks the open database before anything is
+    transcribed, so a well-known song is ready without spending a transcription."""
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+
+        await run_job(session, storage, StubSeparator(), job, song, catalogue=StubCatalogue())
+
+        lyrics = await get_lyrics(session, song.id)
+
+    assert lyrics is not None
+    assert [line.text for line in lyrics.lines] == ["שורה ראשונה", "שורה שנייה"]
+    assert lyrics.source == "db"
+    assert song.lyrics_status == LyricsStatus.LINE
+    assert job.state == JobState.READY
+
+
+async def test_a_lyrics_database_that_fails_does_not_fail_the_job(sessions, storage, tmp_path):
+    """Chapter 7 is explicit, and this is the case it was written for: the stems
+    are done, the user can sing, and a stranger's service being down is not a
+    reason to tell them their song failed."""
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+
+        await run_job(
+            session,
+            storage,
+            StubSeparator(),
+            job,
+            song,
+            catalogue=StubCatalogue(error=CatalogueError("down")),
+        )
+
+    assert job.state == JobState.READY
+    assert song.lyrics_status == LyricsStatus.MISSING
 
 
 async def test_gpu_seconds_land_on_the_job(sessions, storage, tmp_path):

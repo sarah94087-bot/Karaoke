@@ -116,6 +116,7 @@
     "too_many_lyric_lines": "That is too many lines for one song. Up to 1000 can be saved.",
     "lyrics_save_conflict": "Another save of these lyrics landed a moment before yours. Try saving again.",
     "lyrics_version_not_found": "That version of the lyrics does not exist.",
+    "lyrics_match_not_found": "The open lyrics database has no timed lyrics for this song. You can type or paste them in the editor.",
     "unknown": "Something went wrong. You can try again."
   }
 }

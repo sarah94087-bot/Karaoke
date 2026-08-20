@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from packages.core.db import create_engine, session_factory
 from packages.core.jobs import recover_interrupted
+from packages.providers.lyrics_catalogue import get_catalogue
 from packages.providers.separation import get_separator
 from packages.providers.storage import LocalStorage
 
@@ -46,6 +47,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     deps.get_session, with a code the web app can render.
     """
     app.state.storage = LocalStorage(Path(settings.storage_root))
+    # One instance, shared by the job runner and by the manual search endpoint,
+    # so there is a single place that decides which database is in use.
+    app.state.catalogue = get_catalogue(settings.lyrics_catalogue)
     app.state.engine = None
     app.state.sessions = None
     app.state.runner = None
@@ -59,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sessions=sessions,
             storage=app.state.storage,
             separator=get_separator(settings.separation_backend),
+            catalogue=app.state.catalogue,
         )
 
         # Nothing is running, whatever the table says: jobs run inside this

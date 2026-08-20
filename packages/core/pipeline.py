@@ -24,8 +24,10 @@ from packages.core import jobs
 from packages.core.analysis import analyse_song
 from packages.core.enums import JobStep
 from packages.core.events import EventBus, EventType, JobEvent
+from packages.core.lyrics_lookup import lookup_lyrics
 from packages.core.models import Job, Song
 from packages.core.stems import record_stems, separate, source_for
+from packages.providers.lyrics_catalogue import LyricsCatalogue
 from packages.providers.separation import (
     SeparationError,
     SeparationUnavailable,
@@ -71,6 +73,7 @@ async def run_job(
     job: Job,
     song: Song,
     bus: EventBus | None = None,
+    catalogue: LyricsCatalogue | None = None,
 ) -> Job:
     """Take a queued job to `ready`, or to `failed` with a code.
 
@@ -97,6 +100,15 @@ async def run_job(
         await session.commit()
         announce(bus, job, song, "failed")
         raise PipelineError("internal_error", str(exc)) from exc
+
+    # D-08's first source of lyrics: a song somebody has already timed by hand.
+    # Deliberately outside the try - and not a JobStep - for the same reasons
+    # the analysis in T-1.15 is neither: chapter 7's pipeline has no step for
+    # it, it is one HTTP call, and it cannot fail the job. It runs after the
+    # song is playable, so the singing never waits for it.
+    if catalogue is not None:
+        await lookup_lyrics(session, song, catalogue)
+        await session.commit()
 
     await jobs.finish(session, job, song)
     await session.commit()
