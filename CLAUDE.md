@@ -108,13 +108,26 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
   inspection. `packages/providers/net.py` holds the one `User-Agent` every
   outbound call sends, next to the `truststore` injection, because both are
   one-line fixes to failures that look like something else.
-- **`localhost` is not `127.0.0.1` for the web app.** Node resolves `localhost`
-  to `::1` first, and `python -m apps.api` binds IPv4 only (uvicorn's default),
-  so every *server-rendered* page hangs until it times out and the screen says
-  "the service is unavailable" while `curl` on the same machine answers
-  instantly. The compose container publishes on both stacks, which is why this
-  only bites the venv setup — the one used to develop. Both defaults now say
-  `127.0.0.1` (`apps/web/src/lib/api.ts`, `apps/web/next.config.ts`).
+- **`localhost` and `127.0.0.1` are not interchangeable here, in both
+  directions.**
+  - *Server side*: Node resolves `localhost` to `::1` first and
+    `python -m apps.api` binds IPv4 only (uvicorn's default), so a
+    server-rendered page hangs until it times out and the screen says "the
+    service is unavailable" while `curl` on the same machine answers instantly.
+    The compose container publishes on both stacks, which is why this only bites
+    the venv setup — the one used to develop. Both API-base defaults now say
+    `127.0.0.1`.
+  - *Browser side*: Next 16 refuses to serve dev chunks to an unrecognised
+    origin, so opening the app at `http://127.0.0.1:3000` renders the HTML and
+    then **never hydrates** — the words are on the screen and nothing is
+    clickable, with the reason only in the dev server's log.
+    `allowedDevOrigins: ["127.0.0.1"]` in `next.config.ts` settles it; `npm run
+    dev` still prints `localhost:3000` and that address always worked.
+- A Hebrew filename uploaded **from the browser** stores a Hebrew title; a
+  filename sent by `curl` from this cp1255 console arrives as mojibake
+  (`ãøåù ðà`) because the bytes are cp1255 and the server reads them as latin-1.
+  Worth knowing before filing a bug about it: it is the test command, not the
+  app.
 - Console is cp1255. Set `PYTHONIOENCODING=utf-8` when a tool prints Unicode,
   and pass `encoding="utf-8"` to `subprocess` when filenames are Hebrew.
 - Shared code is imported as `packages.core`, `packages.audio`, … — not bare
@@ -753,11 +766,19 @@ From `T-2.6`:
 - The words are painted **before the engine is ready** — decoding four stems
   takes a moment and the lyrics are the one thing on that screen readable
   without a clock. The same reasoning as D-28, one level down.
-- Verified through Next → API → Postgres: the server-rendered HTML carries the
-  lyrics area with the first line in it (`מעונך דרושנה`), RTL, in Hebrew.
-  **Not verified in a live browser** — no browser was available in that session,
-  so the moving highlight itself has not been watched. The clock arithmetic, the
-  line and word selection and the boundary cases are covered by 20 unit tests.
+- **Measured in a real browser**, which is the only place this claim means
+  anything. Played a 45s song from zero and sampled the DOM every frame for the
+  whole run, then matched all twelve line changes against the stored times. The
+  error of each change relative to the first one:
+
+      0  −23  +13  −4  +16  −2  +8  +38  +37  +37  +73  +129 ms
+
+  **Eleven of twelve inside 100ms**, and that includes the sampler's own frame
+  of latency. The last line, 44s in, is +129ms; the error grows slowly across
+  the song, which is worth remembering when `T-2.9` starts moving line times by
+  hand. Note this measures the *display against the stored times* - how well
+  those times match the singing is phase 0's 242ms median, and the reason
+  T-2.7 and T-2.9 exist.
 
 From `T-2.7`:
 
@@ -785,8 +806,9 @@ From `T-2.7`:
   not resolve `@/` paths. Same trap as T-1.14's `controls.ts`; type-only imports
   are erased and can keep the alias.
 - Verified live: `500` saved and read back, `400000` clamped to `30000`, `−400`
-  arriving in the page payload with the lyrics area rendered. The control itself
-  has still not been watched in a browser — same gap as T-2.6.
+  arriving in the page payload. **And in a real browser**: three presses of
+  `המילים מאוחר יותר` showed `+0.3 שנ׳`, the API had `lyric_offset_ms: 300` a
+  second later, and the value was still there after a reload.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.
