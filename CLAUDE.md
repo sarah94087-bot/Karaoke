@@ -152,8 +152,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.7` done. Next is `T-2.8`:
-the lyrics editor — fixing the words themselves and saving a new version.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.8` done. Next is `T-2.9`:
+the timing half of the editor — play from any line, and a "catch the time"
+button.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -809,6 +810,33 @@ From `T-2.7`:
   arriving in the page payload. **And in a real browser**: three presses of
   `המילים מאוחר יותר` showed `+0.3 שנ׳`, the API had `lyric_offset_ms: 300` a
   second later, and the value was still there after a reload.
+
+From `T-2.8`:
+
+- **Every line on the screen, always editable.** `T-0.4.3` timed a real edit and
+  found **64 words corrected against 32 flagged as low confidence** — twice as
+  many — so an editor built around "jump to the marked words" would miss half
+  the work. The same measurement recorded 5.9 minutes of active editing for a
+  2:46 song, which is why there is no per-line dialog and no mode to enter.
+- **A line's timing survives an edit of its text; its word timings do not.** The
+  words were timed one by one, and after an edit they are timings for words that
+  are no longer there — a highlight that lights the wrong syllable and then runs
+  out. The screen says so on the line being edited, *before* the save.
+- One input per line rather than one textarea over the song. A textarea makes
+  the mapping between text and times a matter of counting newlines, and one
+  stray newline shifts every timing by one line. Pasting a whole set of words is
+  a different job — `T-2.10`'s.
+- **Emptying a line deletes it**, because T-2.1 already drops blank lines and
+  re-indexes the rest. A line the model heard and nobody sang should go away by
+  being cleared.
+- `?version=` opens an older set, which is what makes "back to what the machine
+  wrote" real: read it, save it, and the correction you abandoned is still there
+  one version behind. Nothing in this screen can destroy anything.
+- Verified in a real browser end to end: ten lines with timecodes, editing one
+  showed `שורות ששונו: 1` and the word-highlight warning, saving produced
+  **version 3, `manual`**, with that line's words dropped and **its start time
+  unchanged**, while version 2 still reads back with the original text and its
+  two word timings. `?version=1` opens the 13-line mix transcript.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

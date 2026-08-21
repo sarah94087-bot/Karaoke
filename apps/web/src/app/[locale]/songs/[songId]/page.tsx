@@ -30,9 +30,17 @@ export default async function SongPage({
       <main>
         <header className="page-header">
           <h1>{song.title}</h1>
-          <Link className="button-link" href={`/${locale}`}>
-            {t.progress.toLibrary}
-          </Link>
+          <div className="header-actions">
+            {/* The editor is the other half of phase 2: phase 0 measured that
+                automatic Hebrew alignment will not be good enough to leave
+                alone, so getting to it has to be one click from the song. */}
+            <Link className="button-link" href={`/${locale}/songs/${songId}/lyrics`}>
+              {t.editor.open}
+            </Link>
+            <Link className="button-link" href={`/${locale}`}>
+              {t.progress.toLibrary}
+            </Link>
+          </div>
         </header>
         {song.artist ? <p className="tagline">{song.artist}</p> : null}
 

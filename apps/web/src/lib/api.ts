@@ -222,8 +222,39 @@ export function isPending(body: SongLyrics | LyricsPending): body is LyricsPendi
  * than throwing. The player polls while it is pending and the words appear
  * mid-song, which is chapter 8's "lyrics on the way" state.
  */
-export function getLyrics(songId: string): Promise<SongLyrics | LyricsPending> {
-  return request<SongLyrics | LyricsPending>(`/songs/${songId}/lyrics`);
+export function getLyrics(
+  songId: string,
+  version?: number,
+): Promise<SongLyrics | LyricsPending> {
+  const query = version === undefined ? "" : `?version=${version}`;
+  return request<SongLyrics | LyricsPending>(`/songs/${songId}/lyrics${query}`);
+}
+
+/** One line on its way back to the API. No `index`: the order is the order. */
+export interface LyricLineIn {
+  text: string;
+  start_ms: number | null;
+  end_ms: number | null;
+  words: LyricWord[];
+}
+
+/**
+ * Save an edited set of words (T-2.8).
+ *
+ * A `PUT` that answers 201, because chapter 6 says an edit creates a version
+ * and never overwrites one. Nothing is lost by saving: the version being edited
+ * is still readable at `?version=` afterwards.
+ */
+export function saveLyrics(
+  songId: string,
+  lines: LyricLineIn[],
+  language = "he",
+): Promise<SongLyrics> {
+  return request<SongLyrics>(`/songs/${songId}/lyrics`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lines, language, source: "manual" }),
+  });
 }
 
 /**

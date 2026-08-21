@@ -725,3 +725,108 @@ a.playable-banner:hover {
 .lyric-offset-reset {
   font-size: 0.95rem;
 }
+
+/* --- the lyrics editor (T-2.8) -------------------------------------------- */
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.editor {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+/*
+ * Every line on the screen, always editable. Phase 0 (T-0.4.3) measured twice
+ * as many words corrected as were flagged as low confidence, so an editor built
+ * around jumping between marked words would miss half the work.
+ */
+.editor-lines {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.editor-line {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.editor-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.editor-text {
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.editor-text:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.editor-line.is-changed .editor-text {
+  border-color: var(--accent);
+}
+
+.editor-note {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.editor-status {
+  color: var(--muted);
+}
+
+.editor-versions ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.editor-versions a.is-current {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .editor-line {
+    grid-template-columns: 3.6rem 1fr;
+    gap: 0.5rem;
+  }
+}

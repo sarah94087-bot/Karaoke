@@ -50,6 +50,27 @@
     "reset": "Reset",
     "seconds": "s"
   },
+  "editor": {
+    "title": "Lyrics editor",
+    "toPlayer": "To the player",
+    "open": "Edit the lyrics",
+    "explain": "Fix mistakes in the text. The timings stay as they are, and saving creates a new version — the previous one stays.",
+    "empty": "No lyrics for this song yet.",
+    "lineLabel": "Line",
+    "wordsDropped": "This line loses its word-level highlight",
+    "save": "Save a new version",
+    "saving": "Saving…",
+    "changed": "Lines changed:",
+    "noChanges": "Nothing to save.",
+    "savedNote": "Saved as a new version.",
+    "versions": "Versions",
+    "source": {
+      "db": "Open lyrics database",
+      "mix_asr": "Transcript of the mix",
+      "vocals_asr": "Transcript of the vocals",
+      "manual": "Hand-edited"
+    }
+  },
   "mixer": {
     "title": "Mixer",
     "removeVocals": "Remove vocals",
