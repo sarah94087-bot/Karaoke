@@ -23,6 +23,8 @@ import type { LyricLine, LyricLineIn } from "@/lib/api";
 export interface EditableLine {
   /** What the line said when the editor opened. */
   original: string;
+  /** And when it started. T-2.9 moves lines, and "changed" has to include that. */
+  originalStart: number | null;
   text: string;
   start_ms: number | null;
   end_ms: number | null;
@@ -32,6 +34,7 @@ export interface EditableLine {
 export function toEditable(lines: LyricLine[]): EditableLine[] {
   return lines.map((line) => ({
     original: line.text,
+    originalStart: line.start_ms,
     text: line.text,
     start_ms: line.start_ms,
     end_ms: line.end_ms,
@@ -50,8 +53,13 @@ export function isChanged(line: EditableLine): boolean {
   return line.text.trim() !== line.original.trim();
 }
 
+/** Moved in time (T-2.9), which is a change to save even if the text is the same. */
+export function isMoved(line: EditableLine): boolean {
+  return line.start_ms !== line.originalStart;
+}
+
 export function changedCount(lines: EditableLine[]): number {
-  return lines.filter(isChanged).length;
+  return lines.filter((line) => isChanged(line) || isMoved(line)).length;
 }
 
 /**

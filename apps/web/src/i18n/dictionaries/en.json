@@ -64,6 +64,13 @@
     "noChanges": "Nothing to save.",
     "savedNote": "Saved as a new version.",
     "versions": "Versions",
+    "playPause": "Play / pause",
+    "loop": "Loop this line",
+    "audioReady": "Ready to listen and catch times",
+    "playLine": "Play from this line",
+    "catchTime": "Catch the time",
+    "earlier": "0.1s earlier",
+    "later": "0.1s later",
     "source": {
       "db": "Open lyrics database",
       "mix_asr": "Transcript of the mix",

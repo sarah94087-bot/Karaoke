@@ -152,9 +152,8 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.8` done. Next is `T-2.9`:
-the timing half of the editor — play from any line, and a "catch the time"
-button.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.9` done. Next is `T-2.10`,
+the last one: pasting words you already have and timing them by hand.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -837,6 +836,42 @@ From `T-2.8`:
   **version 3, `manual`**, with that line's words dropped and **its start time
   unchanged**, while version 2 still reads back with the original text and its
   two word timings. `?version=1` opens the 13-line mix transcript.
+
+From `T-2.9`:
+
+- **The shape comes from a phase 0 failure, not from a guess.** `T-0.5.3` tried
+  tapping along in real time and it went wrong the same way twice, on two songs:
+  reading the words and pressing in time at once is a double task, and it slid
+  the whole take by a line. Its recommendation was a rough pass and then a
+  *correction pass* — one line looped and nudged. So the editor plays a line
+  **with a 1.5s lead-in** (a line that starts the instant you press play gives
+  you nothing to compare it against), loops it, and offers "תפוס זמן" or 100ms
+  steps. Nothing asks anyone to be accurate while the song runs past.
+- **A shift takes the line's words with it.** `T-0.5.2` measured word timings as
+  relatively right and absolutely wrong, so moving the whole line by one delta
+  is exactly the correction that keeps the half that was measured. Verified
+  live: line start 400→600ms and both its words 400→600 and 1620→1820.
+- **Starts stay in ascending order**, clamped to the neighbours. The player
+  finds the current line by binary search (T-2.6), so a line that jumped behind
+  its predecessor would not be early, it would be invisible.
+- The editor builds **its own `PlayerEngine`**. It is the same class the player
+  uses, and the loop watches the audio clock rather than a timer — chapter 8's
+  rule applies on this screen too.
+- **A bug the browser found and no unit test would have.** The nudge buttons
+  read `lines` from the closure, so two presses inside one render both computed
+  from the same array and the second was lost — exactly what tapping a nudge
+  button quickly does. Every `setLines` in that file now takes the functional
+  form.
+- Verified live: play-from-line advances the clock from the lead-in, "catch the
+  time" lands the line where the song is (and visibly stops at the next line's
+  start, which is the clamp), three quick nudges move 0.3s, and saving writes a
+  new `manual` version with the other lines untouched. **The loop's wrap was not
+  observed**: `requestAnimationFrame` is throttled while the window is in the
+  background, which is where the browser was, so the loop rests on `loopEnd`'s
+  unit tests and on nothing else.
+- Practical note for any live check: **`scripts/check.py` empties the songs
+  table** (the database tests do), so upload the song you are looking at *after*
+  the last run of it, not before.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

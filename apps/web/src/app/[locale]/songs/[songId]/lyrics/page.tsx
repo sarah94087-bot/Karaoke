@@ -53,6 +53,7 @@ export default async function LyricsPage({
         <LyricsEditor
           songId={songId}
           songTitle={song.title}
+          stems={song.stems}
           lyrics={editable}
           locale={locale}
           t={t}
