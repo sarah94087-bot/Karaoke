@@ -40,6 +40,11 @@
       "backing": "Backing"
     }
   },
+  "lyrics": {
+    "title": "Lyrics",
+    "pending": "The words are on their way. Start singing — they will come in as you go.",
+    "missing": "No lyrics for this song yet. You can add them in the editor."
+  },
   "mixer": {
     "title": "Mixer",
     "removeVocals": "Remove vocals",

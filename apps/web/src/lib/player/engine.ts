@@ -16,6 +16,13 @@
  * file, and there must not be one added: a browser timer and an audio clock
  * agree for about a minute, and then the lyrics start sliding.
  *
+ * `positionNow()` (T-2.6) is the one thing that looks like an exception and is
+ * not. The worklet reports every 40 render quanta, about 116ms, which is longer
+ * than the whole 100ms budget chapter 8 gives the lyrics. So between reports
+ * the position is carried forward using `AudioContext.currentTime` - which is
+ * the same audio clock the worklet is counting on, read from the other end.
+ * Nothing here measures time with a browser timer.
+ *
  * The four gain nodes hang off the worklet's four outputs, so muting a stem
  * does not touch the engine and cannot cost sync (T-0.2.2).
  */
@@ -58,6 +65,23 @@ const FADE_SECONDS = 0.07;
 
 const WORKLET_URL = "/pitch-worklet.js";
 
+/**
+ * The position between two worklet reports.
+ *
+ * Exported and pure so the arithmetic can be tested without Web Audio: this is
+ * what the lyrics are timed by, and the acceptance criterion for T-2.6 is a
+ * number of milliseconds. `elapsed` is time from the **audio** clock, and the
+ * read head advances at the playback rate - which is what tempo means here.
+ */
+export function extrapolate(
+  reported: number,
+  elapsed: number,
+  tempo: number,
+  duration: number,
+): number {
+  return Math.max(0, Math.min(duration, reported + elapsed * tempo));
+}
+
 export const KEY_RANGE = { min: -6, max: 6 } as const;
 export const TEMPO_RANGE = { min: 0.5, max: 1.5 } as const;
 
@@ -84,6 +108,13 @@ export class PlayerEngine {
   };
 
   private listeners = new Set<(state: PlayerState) => void>();
+
+  /**
+   * The last thing the worklet said, and the audio-clock time it said it at.
+   * Together they are what lets `positionNow()` fill in the gap between
+   * reports without inventing a clock of its own.
+   */
+  private lastReport: { position: number; at: number } | null = null;
 
   subscribe(listener: (state: PlayerState) => void): () => void {
     this.listeners.add(listener);
@@ -159,6 +190,7 @@ export class PlayerEngine {
       const message = event.data;
       if (message.type === "status" && typeof message.posSeconds === "number") {
         // The clock. Everything that needs to know "where are we" reads this.
+        this.lastReport = { position: message.posSeconds, at: context.currentTime };
         this.emit({ position: message.posSeconds });
       } else if (message.type === "ended") {
         this.emit({ playing: false });
@@ -167,6 +199,28 @@ export class PlayerEngine {
 
     const duration = decoded[0].buffer.duration;
     this.emit({ ready: true, duration, position: 0, playing: false });
+  }
+
+  /**
+   * Where the song is *right now*, not where it was at the last report.
+   *
+   * The worklet speaks every ~116ms; a highlight that only moved when it spoke
+   * would be up to 116ms late on its own, before any error in the lyrics
+   * themselves. So the reported position is carried forward by the audio
+   * clock's own elapsed time, scaled by tempo - the read head advances at the
+   * playback rate, which is exactly what tempo means here.
+   */
+  positionNow(): number {
+    const report = this.lastReport;
+    if (this.context === null || report === null || !this.state.playing) {
+      return this.state.position;
+    }
+    return extrapolate(
+      report.position,
+      this.context.currentTime - report.at,
+      this.state.tempo,
+      this.state.duration,
+    );
   }
 
   async play(): Promise<void> {
@@ -190,6 +244,10 @@ export class PlayerEngine {
   seek(seconds: number): void {
     const clamped = Math.max(0, Math.min(this.state.duration, seconds));
     this.node?.port.postMessage({ type: "seek", pos: clamped });
+    // The estimate has to move with the seek, or the lyrics keep running from
+    // where the song used to be until the worklet's next report.
+    this.lastReport =
+      this.context === null ? null : { position: clamped, at: this.context.currentTime };
     // Reported optimistically so the scrubber does not jump back for the ~116ms
     // until the worklet's next status message. The clock still wins.
     this.emit({ position: clamped });
@@ -238,6 +296,7 @@ export class PlayerEngine {
     this.context = null;
     this.node = null;
     this.master = null;
+    this.lastReport = null;
     this.emit({ ready: false, playing: false, position: 0, duration: 0 });
   }
 }

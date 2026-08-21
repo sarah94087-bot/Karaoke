@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { KEY_RANGE, PlayerEngine, TEMPO_RANGE } from "../src/lib/player/engine.ts";
+import { KEY_RANGE, PlayerEngine, TEMPO_RANGE, extrapolate } from "../src/lib/player/engine.ts";
 
 test("the key range is chapter 8's: six semitones each way", () => {
   assert.deepEqual({ ...KEY_RANGE }, { min: -6, max: 6 });
@@ -91,4 +91,29 @@ test("seeking before anything is loaded cannot go negative", () => {
   engine.seek(-30);
 
   assert.equal(engine.getState().position, 0);
+});
+
+/**
+ * The clock between reports (T-2.6).
+ *
+ * The worklet speaks every ~116ms and the lyrics budget is 100ms, so the
+ * position has to be carried forward between reports. It is carried by the
+ * audio clock's own elapsed time - never by a browser timer - and this is the
+ * arithmetic that does it.
+ */
+test("between reports the position advances with the audio clock", () => {
+  assert.equal(extrapolate(10, 0.05, 1, 200), 10.05);
+});
+
+test("at half speed the read head moves half as far", () => {
+  // `tempo` is the playback rate, so 50ms of real time is 25ms of song.
+  assert.equal(extrapolate(10, 0.05, 0.5, 200), 10.025);
+});
+
+test("the estimate never runs past the end of the song", () => {
+  assert.equal(extrapolate(199.9, 5, 1, 200), 200);
+});
+
+test("the estimate never goes negative", () => {
+  assert.equal(extrapolate(0, -1, 1, 200), 0);
 });

@@ -3,9 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { KeyTempo } from "@/components/KeyTempo";
+import { Lyrics } from "@/components/Lyrics";
 import { Mixer } from "@/components/Mixer";
 import type { Dictionary } from "@/i18n";
-import { type SongDetail, saveSettings, stemUrl } from "@/lib/api";
+import {
+  type LyricLine,
+  type SongDetail,
+  getLyrics,
+  isPending,
+  saveSettings,
+  stemUrl,
+} from "@/lib/api";
 import { type StemMode, resolveMode, storeMode } from "@/lib/player/capability";
 import {
   type Channel,
@@ -36,7 +44,17 @@ import { formatDuration } from "@/lib/song";
  * every 40 render quanta. Chapter 8 forbids browser timers for exactly this.
  */
 
-export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
+export function Player({
+  song,
+  lyrics: initialLyrics,
+  t,
+}: {
+  song: SongDetail;
+  /** Fetched on the server with the song, so the words are on the first paint
+   *  rather than one round trip later. Null when there are none yet. */
+  lyrics: LyricLine[] | null;
+  t: Dictionary;
+}) {
   const engineRef = useRef<PlayerEngine | null>(null);
   const [state, setState] = useState<PlayerState | null>(null);
   // Seeded from what was saved, so the first render already shows the key and
@@ -44,6 +62,10 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
   const [mix, setMix] = useState<MixState>(() => toMix(song.settings));
   const [mode, setMode] = useState<StemMode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lyrics, setLyrics] = useState<{
+    lines: LyricLine[];
+    status: SongDetail["lyrics_status"];
+  }>({ lines: initialLyrics ?? [], status: song.lyrics_status });
 
   /**
    * Chapter 5 says settings are "saved automatically on every change in the
@@ -116,6 +138,49 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
   }, [song.id, song.stems, song.settings, mode, t.player.failed]);
 
   /**
+   * The words, and then the better words.
+   *
+   * D-28 opens this screen before the lyrics exist, so "not yet" is a normal
+   * answer (a 202) and the right response to it is to ask again rather than to
+   * draw a failure. The pipeline replaces a stand-in transcript with the real
+   * one part-way through (T-2.4), which is why this keeps asking while the song
+   * is still processing rather than stopping at the first answer with lines in
+   * it - the words improve under the singer, mid-song, which is chapter 8's
+   * "lyrics on the way" working as designed.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const ask = async () => {
+      try {
+        const body = await getLyrics(song.id);
+        if (cancelled) return;
+        if (isPending(body)) {
+          setLyrics({ lines: [], status: "pending" });
+        } else {
+          setLyrics({ lines: body.lines, status: body.status });
+          if (body.status !== "pending" && song.status === "ready") return;
+        }
+      } catch {
+        // A lyrics fetch that fails is not worth breaking the player for: the
+        // stems are already playing. The next poll tries again.
+        if (cancelled) return;
+      }
+      // Slow on purpose. The words arrive once, somewhere in the minute after
+      // the stems, and a tighter poll would spend a request a second on a free
+      // tier for a screen that is already busy playing audio.
+      timer = setTimeout(() => void ask(), 5_000);
+    };
+
+    void ask();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [song.id, song.status]);
+
+  /**
    * Write whatever is pending when the page is being hidden. A debounce that
    * only fires on a timer loses the last change when someone closes the tab
    * straight after making it - which is exactly when they had finished
@@ -174,6 +239,23 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
     [mix],
   );
 
+  /*
+   * The words do not wait for the audio. Decoding four stems takes a moment,
+   * and the lyrics are the thing on this screen that can be read without a
+   * clock - so they are painted first and start moving when the engine does.
+   * The same reasoning as D-28, one level down.
+   */
+  const words = (
+    <Lyrics
+      lines={lyrics.lines}
+      status={lyrics.status}
+      engine={state?.ready ? engineRef.current : null}
+      offsetMs={song.settings.lyric_offset_ms}
+      playing={state?.playing ?? false}
+      t={t}
+    />
+  );
+
   if (song.stems.length === 0) {
     return <p className="hint">{t.player.notReady}</p>;
   }
@@ -181,7 +263,12 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
     return <p className="song-error">{error}</p>;
   }
   if (mode === null || state === null || !state.ready) {
-    return <p className="hint">{t.player.loading}</p>;
+    return (
+      <div className="player">
+        {words}
+        <p className="hint">{t.player.loading}</p>
+      </div>
+    );
   }
 
   return (
@@ -206,6 +293,8 @@ export function Player({ song, t }: { song: SongDetail; t: Dictionary }) {
         onChange={(event) => seek(Number(event.target.value))}
         aria-label={t.player.clock}
       />
+
+      {words}
 
       <KeyTempo
         semitones={state.semitones}

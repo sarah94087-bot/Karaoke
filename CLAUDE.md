@@ -108,6 +108,13 @@ Note: `modal deploy` reports "no changes detected" even after edits. Bump
   inspection. `packages/providers/net.py` holds the one `User-Agent` every
   outbound call sends, next to the `truststore` injection, because both are
   one-line fixes to failures that look like something else.
+- **`localhost` is not `127.0.0.1` for the web app.** Node resolves `localhost`
+  to `::1` first, and `python -m apps.api` binds IPv4 only (uvicorn's default),
+  so every *server-rendered* page hangs until it times out and the screen says
+  "the service is unavailable" while `curl` on the same machine answers
+  instantly. The compose container publishes on both stacks, which is why this
+  only bites the venv setup — the one used to develop. Both defaults now say
+  `127.0.0.1` (`apps/web/src/lib/api.ts`, `apps/web/next.config.ts`).
 - Console is cp1255. Set `PYTHONIOENCODING=utf-8` when a tool prints Unicode,
   and pass `encoding="utf-8"` to `subprocess` when filenames are Hebrew.
 - Shared code is imported as `packages.core`, `packages.audio`, … — not bare
@@ -132,9 +139,9 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.5` done. Next is `T-2.6`:
-the lyrics running in the player, with the current line highlighted inside
-100ms of where it is sung.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.6` done. Next is `T-2.7`:
+the offset control, so a whole song's words can be nudged earlier or later and
+the value is remembered.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -722,6 +729,36 @@ From `T-2.5`:
   them with word timings, and the song reporting `lyrics_status: line` because
   two lines did not qualify — which is the derived-status rule from T-2.1 doing
   its job.
+
+From `T-2.6`:
+
+- **The clock is still the engine's, and rAF is the paint rather than the
+  clock.** The worklet reports every ~116ms, which is longer than the whole
+  100ms budget chapter 8 gives the lyrics, so `engine.positionNow()` carries the
+  last report forward using `AudioContext.currentTime` — the same audio clock,
+  read from the other end — scaled by tempo, because the read head advances at
+  the playback rate. `requestAnimationFrame` asks "where are we" once a frame
+  and never counts time. React re-renders only when the highlighted line or
+  word actually changes, which is a few dozen times a song rather than 60/s.
+- `src/lib/lyrics.ts` holds the rules (which line, which word, the offset) apart
+  from the component, because the acceptance criterion is a number and a rule
+  with a number in it belongs where it can be tested in a millisecond.
+- A line **holds for 1.2s after its own end** unless the next one starts first.
+  Without that, every gap between phrases blanks the area and the screen
+  flickers through the whole song. A line with `end_ms: null` (T-2.5's "we do
+  not know") is shown until the next line starts, which is what that null means.
+- The lyrics are **fetched on the server with the song** and re-fetched by the
+  player while the pipeline is still working: a 202 is a normal answer (D-28),
+  and T-2.4 replaces the stand-in transcript mid-song, so the words improve
+  under the singer. That is chapter 8's "lyrics on the way", working as written.
+- The words are painted **before the engine is ready** — decoding four stems
+  takes a moment and the lyrics are the one thing on that screen readable
+  without a clock. The same reasoning as D-28, one level down.
+- Verified through Next → API → Postgres: the server-rendered HTML carries the
+  lyrics area with the first line in it (`מעונך דרושנה`), RTL, in Hebrew.
+  **Not verified in a live browser** — no browser was available in that session,
+  so the moving highlight itself has not been watched. The clock arithmetic, the
+  line and word selection and the boundary cases are covered by 20 unit tests.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Player } from "@/components/Player";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
-import { ApiError, getSong } from "@/lib/api";
+import { ApiError, getLyrics, getSong, isPending } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +19,12 @@ export default async function SongPage({
 
   try {
     const song = await getSong(songId);
+    // Alongside the song rather than after it: the words are what this screen
+    // is for, and a client fetch would show the "on the way" state for a moment
+    // on a song whose lyrics have been sitting in the database for a week.
+    // Failure is fine - the player asks again itself, and keeps asking while
+    // the pipeline is still working (D-28).
+    const lyrics = await getLyrics(songId).catch(() => null);
 
     return (
       <main>
@@ -53,7 +59,11 @@ export default async function SongPage({
             ) : null}
           </dl>
         ) : null}
-        <Player song={song} t={t} />
+        <Player
+          song={song}
+          lyrics={lyrics === null || isPending(lyrics) ? null : lyrics.lines}
+          t={t}
+        />
       </main>
     );
   } catch (error) {

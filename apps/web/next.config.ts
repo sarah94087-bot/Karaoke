@@ -5,7 +5,10 @@ const config: NextConfig = {
   // localhost:8000; in production it is a different host entirely, so the base
   // URL is configuration rather than something baked in at build time.
   env: {
-    NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1",
+    // 127.0.0.1 rather than localhost: see the note in src/lib/api.ts - Node
+    // resolves localhost to ::1 and the local API binds IPv4 only, which makes
+    // every server-rendered page time out.
+    NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api/v1",
   },
 };
 

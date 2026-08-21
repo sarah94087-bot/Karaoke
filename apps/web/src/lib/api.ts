@@ -6,7 +6,17 @@
  * service on a different host in production (chapter 10).
  */
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api/v1";
+/**
+ * `127.0.0.1`, not `localhost`, and the difference is not cosmetic.
+ *
+ * Server components fetch through Node, and Node resolves `localhost` to `::1`
+ * first. `python -m apps.api` binds `127.0.0.1` only (uvicorn's default), so a
+ * server-rendered page against `localhost` hangs until it times out and the
+ * screen shows "the service is unavailable" while `curl` from the same machine
+ * answers instantly. The container publishes on both stacks, which is why this
+ * only ever bites the venv setup - the one used to develop.
+ */
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api/v1";
 
 export type JobState = "queued" | "running" | "ready" | "failed";
 
@@ -159,6 +169,61 @@ export interface SongDetail {
 
 export function getSong(songId: string): Promise<SongDetail> {
   return request<SongDetail>(`/songs/${songId}`);
+}
+
+export interface LyricWord {
+  text: string;
+  start_ms: number;
+  end_ms: number | null;
+}
+
+export interface LyricLine {
+  index: number;
+  text: string;
+  /** Milliseconds from the start of the song. Null on a line nobody timed. */
+  start_ms: number | null;
+  /**
+   * Null when the end is not known - T-2.5 says so rather than guessing, and
+   * the player shows such a line until the next one starts.
+   */
+  end_ms: number | null;
+  /** Empty unless the alignment was confident enough to keep them (D-09). */
+  words: LyricWord[];
+}
+
+export interface SongLyrics {
+  song_id: string;
+  version: number;
+  language: string;
+  source: "db" | "mix_asr" | "vocals_asr" | "manual";
+  is_verified: boolean;
+  status: LibrarySong["lyrics_status"];
+  lines: LyricLine[];
+  versions: { version: number; source: string; language: string; created_at: string }[];
+  created_at: string;
+}
+
+/** The 202 body: the pipeline is still working on the words. */
+export interface LyricsPending {
+  song_id: string;
+  status: "pending";
+  detail: string;
+}
+
+export function isPending(body: SongLyrics | LyricsPending): body is LyricsPending {
+  return !("lines" in body);
+}
+
+/**
+ * The words, or "not yet".
+ *
+ * D-28 opens the player before the lyrics exist, so 202 is a normal answer to a
+ * normal request and not an error - which is why this returns a union rather
+ * than throwing. The player polls while it is pending and the words appear
+ * mid-song, which is chapter 8's "lyrics on the way" state.
+ */
+export function getLyrics(songId: string): Promise<SongLyrics | LyricsPending> {
+  return request<SongLyrics | LyricsPending>(`/songs/${songId}/lyrics`);
 }
 
 /**

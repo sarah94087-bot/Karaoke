@@ -614,3 +614,68 @@ a.playable-banner:hover {
   block-size: 1.15rem;
   accent-color: var(--accent);
 }
+
+/* --- the lyrics (T-2.6) --------------------------------------------------- */
+
+/*
+ * Chapter 8: the current line large, the next one dimmed, and a word picked out
+ * when the alignment was good enough to say which. The area keeps a fixed
+ * height so that a line arriving or leaving never moves the mixer under the
+ * user's finger mid-song.
+ */
+.lyrics {
+  display: grid;
+  align-content: center;
+  gap: 0.5rem;
+  min-block-size: 7.5rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.lyrics-current {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.35;
+  /* A line can be long; wrapping is better than a scrollbar in a karaoke
+     screen, and the box is sized for two lines of it. */
+  text-wrap: balance;
+}
+
+.lyrics-next {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.lyric-word {
+  transition: color 90ms linear;
+}
+
+/* Words are separate elements, so the space between them has to be asked for
+   rather than inherited from the text. */
+.lyric-word + .lyric-word {
+  margin-inline-start: 0.35ch;
+}
+
+.lyric-word.is-sung {
+  color: var(--accent);
+}
+
+.lyrics-waiting {
+  color: var(--muted);
+}
+
+.lyrics-note {
+  margin: 0;
+  font-size: 1rem;
+}
+
+@media (max-width: 480px) {
+  .lyrics-current {
+    font-size: 1.35rem;
+  }
+}

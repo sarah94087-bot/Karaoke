@@ -35,3 +35,8 @@ node_modules/
 .next/
 next-env.d.ts
 *.tsbuildinfo
+
+# Written into apps/web by the Next.js dev server on startup (its own guidance
+# for coding agents). Generated, not ours, and it reappears on every run.
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
