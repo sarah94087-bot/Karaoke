@@ -10,9 +10,11 @@ import {
   type EditableLine,
   changedCount,
   editLine,
+  fromPaste,
   isChanged,
   isMoved,
   keepsWords,
+  nextUntimed,
   timecode,
   toEditable,
   toSave,
@@ -70,6 +72,8 @@ export function LyricsEditor({
   const [active, setActive] = useState<number | null>(null);
   const [looping, setLooping] = useState(true);
   const [audio, setAudio] = useState<"off" | "loading" | "ready" | "failed">("off");
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState("");
 
   const engineRef = useRef<PlayerEngine | null>(null);
   // Read inside the animation frame, which must not re-subscribe on every
@@ -143,6 +147,26 @@ export function LyricsEditor({
     setLines((current) => setStart(current, index, Math.round(engine.positionNow() * 1000)));
   }, []);
 
+  /**
+   * The rough pass over a pasted song (T-2.10): one button that always means
+   * "the line that is being sung now is the next one without a time".
+   *
+   * Phase 0's tapping failure (T-0.5.3) was partly about hunting for the right
+   * control while reading and listening at once. One button in one place
+   * removes the hunting; the correction pass fixes what the tapping got wrong.
+   */
+  const catchNext = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine === null) return;
+    const at = Math.round(engine.positionNow() * 1000);
+    setLines((current) => {
+      const index = nextUntimed(current, activeRef.current ?? -1);
+      if (index === null) return current;
+      setActive(index);
+      return setStart(current, index, at);
+    });
+  }, []);
+
   async function save() {
     if (busy || changed === 0) return;
     setBusy(true);
@@ -198,6 +222,9 @@ export function LyricsEditor({
             />
             {t.editor.loop}
           </label>
+          <button type="button" onClick={catchNext} disabled={audio !== "ready"}>
+            {t.editor.catchNext}
+          </button>
           <span className="editor-status" aria-live="polite">
             {audio === "loading"
               ? t.player.loading
@@ -210,7 +237,51 @@ export function LyricsEditor({
         </div>
       ) : null}
 
-      {lyrics.lines.length === 0 ? (
+      {/*
+        D-08's third source of words, and the editor's own: somebody who already
+        has the lyrics should not have to wait for a model to guess them. The
+        lines arrive untimed on purpose - T-2.1 stores that happily and calls the
+        song `missing` until times exist, which is exactly what is true - and the
+        timing is then the same job the buttons above already do.
+      */}
+      <section className="editor-paste">
+        {pasting ? (
+          <>
+            <textarea
+              className="editor-paste-box"
+              value={pasted}
+              onChange={(event) => setPasted(event.target.value)}
+              placeholder={t.editor.pastePlaceholder}
+              rows={8}
+              aria-label={t.editor.paste}
+            />
+            <div className="editor-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setLines(fromPaste(pasted));
+                  setActive(null);
+                  setPasting(false);
+                  setPasted("");
+                }}
+                disabled={fromPaste(pasted).length === 0}
+              >
+                {t.editor.pasteApply}
+              </button>
+              <button type="button" onClick={() => setPasting(false)}>
+                {t.editor.pasteCancel}
+              </button>
+              <span className="editor-status">{t.editor.pasteExplain}</span>
+            </div>
+          </>
+        ) : (
+          <button type="button" onClick={() => setPasting(true)}>
+            {lines.length === 0 ? t.editor.pasteFirst : t.editor.paste}
+          </button>
+        )}
+      </section>
+
+      {lines.length === 0 ? (
         <p className="hint">{t.editor.empty}</p>
       ) : (
         <ol className="editor-lines">

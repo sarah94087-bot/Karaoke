@@ -14,7 +14,9 @@ import type { LyricLine } from "../src/lib/api.ts";
 import {
   changedCount,
   editLine,
+  fromPaste,
   isChanged,
+  nextUntimed,
   keepsWords,
   timecode,
   toEditable,
@@ -102,4 +104,52 @@ test("the timecode is readable at a glance", () => {
   assert.equal(timecode(0), "0:00.0");
   assert.equal(timecode(64_200), "1:04.2");
   assert.equal(timecode(null), "—");
+});
+
+/**
+ * Pasting words somebody already has (T-2.10), and the rough pass over them.
+ */
+test("a pasted song becomes untimed lines", () => {
+  const lines = fromPaste("שורה ראשונה\nשורה שנייה\n");
+
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].text, "שורה ראשונה");
+  assert.equal(lines[0].start_ms, null);
+});
+
+test("blank lines between verses do not become lines", () => {
+  // A paste from a lyrics site is full of them, and an empty line is not
+  // something anybody sings.
+  assert.equal(fromPaste("בית\n\n\nפזמון\n").length, 2);
+});
+
+test("windows line endings paste the same as any other", () => {
+  assert.equal(fromPaste("אחת\r\nשתיים").length, 2);
+});
+
+test("pasted lines are all changes, so the save button is live", () => {
+  assert.equal(changedCount(fromPaste("אחת\nשתיים")), 2);
+});
+
+test("the rough pass walks forward through the untimed lines", () => {
+  const lines = fromPaste("אחת\nשתיים\nשלוש");
+
+  assert.equal(nextUntimed(lines, -1), 0);
+  assert.equal(nextUntimed(lines, 0), 1);
+  assert.equal(nextUntimed(lines, 1), 2);
+});
+
+test("and comes back round for the ones that were missed", () => {
+  // Missing a line while tapping along is the normal case, not the exception -
+  // T-0.5.3 measured exactly that happening twice.
+  const lines = editLine(fromPaste("אחת\nשתיים"), 0, "אחת");
+  const timed = [{ ...lines[0], start_ms: 1_000 }, lines[1]];
+
+  assert.equal(nextUntimed(timed, 1), 1);
+});
+
+test("nothing left to time is nothing to do", () => {
+  const timed = fromPaste("אחת").map((line) => ({ ...line, start_ms: 1_000 }));
+
+  assert.equal(nextUntimed(timed, -1), null);
 });

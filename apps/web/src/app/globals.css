@@ -882,3 +882,28 @@ a.playable-banner:hover {
     flex-wrap: wrap;
   }
 }
+
+/* --- pasting your own words (T-2.10) -------------------------------------- */
+
+.editor-paste {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.editor-paste-box {
+  inline-size: 100%;
+  padding: 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.editor-paste-box:focus {
+  outline: none;
+  border-color: var(--accent);
+}

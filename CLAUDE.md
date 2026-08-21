@@ -152,8 +152,12 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.9` done. Next is `T-2.10`,
-the last one: pasting words you already have and timing them by hand.
+Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
+database or from transcription, aligned, running in the player, and editable by
+hand in both text and time.
+
+Phase 3 (cloud and multiple users) is next, and it starts with the two provider
+decisions listed at the bottom of this file.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -872,6 +876,30 @@ From `T-2.9`:
 - Practical note for any live check: **`scripts/check.py` empties the songs
   table** (the database tests do), so upload the song you are looking at *after*
   the last run of it, not before.
+
+From `T-2.10`:
+
+- D-08's three sources of words are the open database, the transcription, and
+  the editor — and this is the editor's own. Someone who already has the lyrics
+  should not have to wait for a model to guess them and then correct the guess.
+- **Pasted lines arrive untimed on purpose.** T-2.1 stores `start_ms: null`
+  happily and reports the song as `missing` until times exist, which is exactly
+  what is true: the words are right and the timing has not been done. Timing
+  them is then the same job T-2.9 already does.
+- **One button does the rough pass**: "תפוס זמן לשורה הבאה" always means the
+  next line without a time, and it wraps round for the ones that were missed.
+  Part of `T-0.5.3`'s tapping failure was hunting for the right control while
+  reading and listening at once; one button in one place removes the hunting,
+  and the correction pass fixes what the tapping got wrong.
+- Blank lines in a paste are dropped rather than kept — a paste from a lyrics
+  site is full of them and nobody sings an empty line — which is the same rule
+  T-2.1 applies on the way in.
+- Verified in a browser: three pasted lines came in untimed with the blank one
+  gone, three presses of the rough-pass button gave 1.469s / 3.111s / 4.748s,
+  and the save wrote version 3 as `manual` with the song reporting
+  `lyrics_status: line` and both transcript versions still readable behind it.
+  A song with an empty newest version opens on "הדביקו את המילים שלכם", which is
+  the state this task exists for.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

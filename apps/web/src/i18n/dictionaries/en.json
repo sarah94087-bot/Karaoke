@@ -71,6 +71,13 @@
     "catchTime": "Catch the time",
     "earlier": "0.1s earlier",
     "later": "0.1s later",
+    "catchNext": "Catch the next line",
+    "paste": "Paste lyrics",
+    "pasteFirst": "Paste your own lyrics",
+    "pastePlaceholder": "Paste the words here, one line per line.",
+    "pasteApply": "Replace the lyrics",
+    "pasteCancel": "Cancel",
+    "pasteExplain": "The lines come in untimed; time them with “catch the time” while the song plays.",
     "source": {
       "db": "Open lyrics database",
       "mix_asr": "Transcript of the mix",

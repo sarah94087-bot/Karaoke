@@ -97,3 +97,49 @@ export function timecode(ms: number | null): string {
   const seconds = total - minutes * 60;
   return `${minutes}:${seconds < 10 ? "0" : ""}${seconds.toFixed(1)}`;
 }
+
+/**
+ * Words somebody already has, turned into lines (T-2.10).
+ *
+ * D-08's three sources are the open database, the transcription, and the
+ * editor - and this is the editor's own source. Someone who has the words
+ * already, from a lyrics site or from memory, should not have to wait for a
+ * model to guess them and then correct the guess.
+ *
+ * The lines come out **untimed on purpose**. T-2.1 stores `start_ms: null`
+ * happily and reports the song as `missing` until times exist, which is the
+ * truth: the words are right and the timing has not been done. The timing is
+ * then the same job T-2.9 already does, one line at a time.
+ */
+export function fromPaste(text: string): EditableLine[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => ({
+      original: "",
+      originalStart: null,
+      text: line,
+      start_ms: null,
+      end_ms: null,
+      words: [],
+    }));
+}
+
+/**
+ * The next line still waiting for a time, for the rough pass.
+ *
+ * Phase 0's warning about tapping along (T-0.5.3) was that hunting for the
+ * right control while reading and listening is what slides a whole take by a
+ * line. One button that always means "the next one" removes the hunting; the
+ * correction pass then fixes what the tapping got wrong.
+ */
+export function nextUntimed(lines: EditableLine[], after = -1): number | null {
+  for (let index = after + 1; index < lines.length; index += 1) {
+    if (lines[index].start_ms === null) return index;
+  }
+  for (let index = 0; index <= after && index < lines.length; index += 1) {
+    if (lines[index].start_ms === null) return index;
+  }
+  return null;
+}
