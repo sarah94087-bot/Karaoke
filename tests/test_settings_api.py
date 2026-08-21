@@ -213,6 +213,27 @@ def test_volumes_are_clamped(client: TestClient, tmp_path: Path):
     assert settings_of(client, song_id)["stem_volumes"] == {"drums": 1.0, "bass": 0.0}
 
 
+def test_the_lyrics_offset_survives_coming_back_to_the_song(client: TestClient, tmp_path: Path):
+    """T-2.7: nudging the words is a setting like any other, and the whole point
+    is that the song opens next time already nudged."""
+    song_id = a_song(client, tmp_path)
+
+    client.put(f"{SONGS}/{song_id}/settings", json={"lyric_offset_ms": -400})
+
+    assert settings_of(client, song_id)["lyric_offset_ms"] == -400
+
+
+def test_an_offset_in_seconds_by_mistake_is_clamped(client: TestClient, tmp_path: Path):
+    """A song is eight minutes at most, so half a minute of offset is already a
+    unit mix-up. Clamped, not refused: an auto-save must never fail a session."""
+    song_id = a_song(client, tmp_path)
+
+    response = client.put(f"{SONGS}/{song_id}/settings", json={"lyric_offset_ms": 400_000})
+
+    assert response.status_code == 200
+    assert response.json()["lyric_offset_ms"] == 30_000
+
+
 def test_saving_for_a_song_that_does_not_exist_is_a_404_with_a_code(client: TestClient):
     response = client.put(f"{SONGS}/{uuid.uuid4()}/settings", json={"key_shift": 1})
 

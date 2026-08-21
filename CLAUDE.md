@@ -139,9 +139,8 @@ Phase 0 closed: 19 of 21 tasks done, one cancelled, one blocked on hardware
 Phase 1 closed: `T-1.1` through `T-1.17` done — upload, separation, jobs, the
 library, and a working player.
 
-Phase 2 (lyrics) in progress. `T-2.1` through `T-2.6` done. Next is `T-2.7`:
-the offset control, so a whole song's words can be nudged earlier or later and
-the value is remembered.
+Phase 2 (lyrics) in progress. `T-2.1` through `T-2.7` done. Next is `T-2.8`:
+the lyrics editor — fixing the words themselves and saving a new version.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -759,6 +758,35 @@ From `T-2.6`:
   **Not verified in a live browser** — no browser was available in that session,
   so the moving highlight itself has not been watched. The clock arithmetic, the
   line and word selection and the boundary cases are covered by 20 unit tests.
+
+From `T-2.7`:
+
+- **Positive means later.** The stored `lyric_offset_ms` is *added* to every
+  line and word time, the same direction a subtitle delay reads in. The buttons
+  say what they do (`המילים מוקדם יותר` / `מאוחר יותר`) so the sign never has to
+  be guessed from a number.
+- Buttons and not a slider, for T-1.14's reason about the key: this is stepped
+  100ms at a time while watching one line go past, which is not scrubbing. The
+  step is 100ms because that is the unit the whole feature is judged in.
+- Range ±3s in the player, ±30s in the API. The wide one is a backstop against
+  a unit mix-up (seconds sent where milliseconds were meant), not a second
+  opinion about what a user should be allowed to do; it is clamped rather than
+  rejected because an auto-save must never fail a session (T-1.16).
+- **`toSettings` used to hardcode `lyric_offset_ms: 0`.** Harmless while nothing
+  could set one — and a bug the moment this control existed, because every fader
+  drag would have quietly reset the timing somebody had just adjusted. It is a
+  parameter now and every save path passes it.
+- Phase 0 is why this control exists *and* why it is not enough: the systematic
+  bias per song measured +180ms, +540ms and −180ms (so no global constant), but
+  the spread *within* one song reached a p90 of 1.7s, which no single number can
+  fix. `T-2.9` is where that gets fixed line by line.
+- `persist.ts` now imports a runtime value from `lyrics.ts`, which means the
+  specifier had to become `../lyrics.ts` — `node --test` strips types but does
+  not resolve `@/` paths. Same trap as T-1.14's `controls.ts`; type-only imports
+  are erased and can keep the alias.
+- Verified live: `500` saved and read back, `400000` clamped to `30000`, `−400`
+  arriving in the page payload with the lyrics area rendered. The control itself
+  has still not been watched in a browser — same gap as T-2.6.
 
 Open provider decisions, both deferred to phase 3 and neither blocking:
 `D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.

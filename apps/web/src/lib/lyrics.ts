@@ -31,13 +31,40 @@ export interface Highlight {
 }
 
 /**
+ * How far the words can be nudged, and by how much at a time (T-2.7).
+ *
+ * Phase 0 measured the systematic bias of a whole song at +180ms, +540ms and
+ * -180ms on three songs, so the useful range is small - three seconds is
+ * already far past anything measured, and a wider one only makes the control
+ * harder to use. The step is 100ms because that is the unit the whole feature
+ * is judged in: chapter 8 asks for the current line within 100ms.
+ *
+ * The same measurement is also why this control cannot be the whole answer:
+ * the spread *within* one song reached a p90 of 1.7s, and one number cannot
+ * fix a spread. That is what T-2.9 is for.
+ */
+export const OFFSET_RANGE = { min: -3_000, max: 3_000 } as const;
+export const OFFSET_STEP_MS = 100;
+
+export function clampOffset(ms: number): number {
+  if (!Number.isFinite(ms)) return 0;
+  return Math.max(OFFSET_RANGE.min, Math.min(OFFSET_RANGE.max, Math.round(ms)));
+}
+
+/** One press of a nudge button. */
+export function stepOffset(current: number, deltaMs: number): number {
+  return clampOffset(current + deltaMs);
+}
+
+/**
  * The user's offset (T-2.7) applied to a stored time.
  *
- * Positive means the words are late and need to come earlier, which is the
- * direction people reach for when they say "the lyrics are behind".
+ * Positive means **later**: the words are shown further into the song than they
+ * are stored. That is the direction the word "offset" reads in - the same as
+ * every subtitle player's delay - and the fix for lyrics that arrive early.
  */
 export function shifted(ms: number | null, offsetMs: number): number | null {
-  return ms === null ? null : ms - offsetMs;
+  return ms === null ? null : ms + offsetMs;
 }
 
 /** The index of the last line that has started by `positionMs`, or -1. */

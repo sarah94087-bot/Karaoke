@@ -12,6 +12,11 @@
  */
 
 import type { PlayerSettings } from "@/lib/api";
+// A relative specifier with its extension, not the `@/` alias: this module is
+// loaded directly by `node --test`, which strips types but does not resolve
+// tsconfig paths. Type-only imports are erased and can keep the alias, which is
+// why the line above still does. (Same trap as T-1.14's controls.ts.)
+import { clampOffset } from "../lyrics.ts";
 import { KEY_RANGE, TEMPO_RANGE, type StemKind } from "./engine.ts";
 import { DEFAULT_MIX, type MixState, STEM_ORDER } from "./mix.ts";
 
@@ -33,8 +38,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/** What the player is currently doing, in the shape the API stores. */
-export function toSettings(mix: MixState, semitones: number, tempo: number): PlayerSettings {
+/**
+ * What the player is currently doing, in the shape the API stores.
+ *
+ * The offset is a parameter rather than a constant, which it was until T-2.7 -
+ * and while nothing could set one that was harmless, the moment T-2.7 added the
+ * control it would have meant every fader drag quietly resetting it to zero.
+ */
+export function toSettings(
+  mix: MixState,
+  semitones: number,
+  tempo: number,
+  lyricOffsetMs = 0,
+): PlayerSettings {
   const volumes: Record<string, number> = {};
   for (const kind of STEM_ORDER) volumes[kind] = mix.volumes[kind];
 
@@ -42,7 +58,7 @@ export function toSettings(mix: MixState, semitones: number, tempo: number): Pla
     key_shift: Math.round(clamp(semitones, KEY_RANGE.min, KEY_RANGE.max)),
     tempo_ratio: clamp(tempo, TEMPO_RANGE.min, TEMPO_RANGE.max),
     stem_volumes: volumes,
-    lyric_offset_ms: 0,
+    lyric_offset_ms: clampOffset(lyricOffsetMs),
   };
 }
 
@@ -78,6 +94,10 @@ export function keyOf(settings: PlayerSettings | null | undefined): number {
 
 export function tempoOf(settings: PlayerSettings | null | undefined): number {
   return clamp(settings?.tempo_ratio ?? 1, TEMPO_RANGE.min, TEMPO_RANGE.max);
+}
+
+export function offsetOf(settings: PlayerSettings | null | undefined): number {
+  return clampOffset(settings?.lyric_offset_ms ?? 0);
 }
 
 export function sameSettings(a: PlayerSettings, b: PlayerSettings): boolean {

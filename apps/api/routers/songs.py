@@ -231,7 +231,11 @@ class PlayerSettings(BaseModel):
     stem_volumes: dict[str, float] | None = Field(
         default=None, description='Per stem, 0..1. e.g. {"vocals": 0}'
     )
-    lyric_offset_ms: int = Field(default=0, description="Phase 2; stored now, unused so far.")
+    lyric_offset_ms: int = Field(
+        default=0,
+        description="T-2.7: how far this person nudged the whole song's words, in milliseconds. "
+        "Positive shows them later. Clamped rather than rejected, like every other setting.",
+    )
 
 
 def _as_settings(row: UserSongSettings | None) -> PlayerSettings:

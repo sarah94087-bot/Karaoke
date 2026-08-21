@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { KeyTempo } from "@/components/KeyTempo";
+import { LyricOffset } from "@/components/LyricOffset";
 import { Lyrics } from "@/components/Lyrics";
 import { Mixer } from "@/components/Mixer";
 import type { Dictionary } from "@/i18n";
@@ -28,7 +29,8 @@ import {
   setStemVolume,
   toggleVocals,
 } from "@/lib/player/mix";
-import { createSaver, keyOf, tempoOf, toMix, toSettings } from "@/lib/player/persist";
+import { stepOffset } from "@/lib/lyrics";
+import { createSaver, keyOf, offsetOf, tempoOf, toMix, toSettings } from "@/lib/player/persist";
 import { formatDuration } from "@/lib/song";
 
 /**
@@ -66,6 +68,9 @@ export function Player({
     lines: LyricLine[];
     status: SongDetail["lyrics_status"];
   }>({ lines: initialLyrics ?? [], status: song.lyrics_status });
+  // T-2.7. State rather than a prop read: a nudge has to move the words on the
+  // screen now, not after a reload.
+  const [offsetMs, setOffsetMs] = useState(() => offsetOf(song.settings));
 
   /**
    * Chapter 5 says settings are "saved automatically on every change in the
@@ -214,9 +219,11 @@ export function Player({
       for (const [kind, volume] of Object.entries(channelVolumes(next, mode ?? "four"))) {
         engine.setVolume(kind as Channel, volume);
       }
-      saver.current.schedule(toSettings(next, engine.getState().semitones, engine.getState().tempo));
+      saver.current.schedule(
+        toSettings(next, engine.getState().semitones, engine.getState().tempo, offsetMs),
+      );
     },
-    [mode],
+    [mode, offsetMs],
   );
 
   const applyKey = useCallback(
@@ -224,9 +231,11 @@ export function Player({
       const engine = engineRef.current;
       if (engine === null) return;
       engine.setKey(semitones);
-      saver.current.schedule(toSettings(mix, engine.getState().semitones, engine.getState().tempo));
+      saver.current.schedule(
+        toSettings(mix, engine.getState().semitones, engine.getState().tempo, offsetMs),
+      );
     },
-    [mix],
+    [mix, offsetMs],
   );
 
   const applyTempo = useCallback(
@@ -234,9 +243,30 @@ export function Player({
       const engine = engineRef.current;
       if (engine === null) return;
       engine.setTempo(ratio);
-      saver.current.schedule(toSettings(mix, engine.getState().semitones, engine.getState().tempo));
+      saver.current.schedule(
+        toSettings(mix, engine.getState().semitones, engine.getState().tempo, offsetMs),
+      );
     },
-    [mix],
+    [mix, offsetMs],
+  );
+
+  /**
+   * Nudge the words, and remember it.
+   *
+   * Saved the same way every other player setting is (T-1.16): coalesced, so
+   * holding the button down is one request rather than one per press, and
+   * flushed when the tab is hidden.
+   */
+  const nudgeLyrics = useCallback(
+    (deltaMs: number) => {
+      const next = stepOffset(offsetMs, deltaMs);
+      setOffsetMs(next);
+      const engine = engineRef.current;
+      saver.current.schedule(
+        toSettings(mix, engine?.getState().semitones ?? 0, engine?.getState().tempo ?? 1, next),
+      );
+    },
+    [mix, offsetMs],
   );
 
   /*
@@ -250,7 +280,7 @@ export function Player({
       lines={lyrics.lines}
       status={lyrics.status}
       engine={state?.ready ? engineRef.current : null}
-      offsetMs={song.settings.lyric_offset_ms}
+      offsetMs={offsetMs}
       playing={state?.playing ?? false}
       t={t}
     />
@@ -295,6 +325,9 @@ export function Player({
       />
 
       {words}
+      {lyrics.lines.length > 0 ? (
+        <LyricOffset offsetMs={offsetMs} onChange={nudgeLyrics} t={t} />
+      ) : null}
 
       <KeyTempo
         semitones={state.semitones}

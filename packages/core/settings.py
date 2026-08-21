@@ -18,6 +18,11 @@ from packages.core.models import UserSongSettings
 # constraint violation, because a settings save must never fail a user's session.
 KEY_SHIFT_RANGE = (-6, 6)
 TEMPO_RANGE = (0.5, 1.5)
+# The lyrics offset (T-2.7). Wider than the ±3s the player offers, because this
+# is the backstop and not the control: what it exists to catch is a unit mix-up
+# - seconds sent where milliseconds were meant - not a user who nudged too far.
+# A song is eight minutes at most, so half a minute is already nonsense.
+LYRIC_OFFSET_RANGE = (-30_000, 30_000)
 STEM_KINDS = ("vocals", "drums", "bass", "other")
 
 
@@ -31,6 +36,16 @@ def clamp_tempo(value: float | None) -> float:
     if value is None:
         return 1.0
     return round(max(TEMPO_RANGE[0], min(TEMPO_RANGE[1], float(value))), 2)
+
+
+def clamp_lyric_offset(value: int | None) -> int:
+    if value is None:
+        return 0
+    try:
+        offset = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(LYRIC_OFFSET_RANGE[0], min(LYRIC_OFFSET_RANGE[1], offset))
 
 
 def clean_volumes(value: dict | None) -> dict[str, float] | None:
@@ -71,7 +86,7 @@ async def save_settings(
         "key_shift": clamp_key_shift(key_shift),
         "tempo_ratio": clamp_tempo(tempo_ratio),
         "stem_volumes_json": clean_volumes(stem_volumes),
-        "lyric_offset_ms": int(lyric_offset_ms or 0),
+        "lyric_offset_ms": clamp_lyric_offset(lyric_offset_ms),
     }
 
     statement = insert(UserSongSettings).values(**values)

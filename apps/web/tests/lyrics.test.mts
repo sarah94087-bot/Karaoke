@@ -11,7 +11,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { LyricLine } from "../src/lib/api.ts";
-import { HOLD_MS, highlightAt, startedBy, wordAt } from "../src/lib/lyrics.ts";
+import {
+  HOLD_MS,
+  OFFSET_RANGE,
+  OFFSET_STEP_MS,
+  clampOffset,
+  highlightAt,
+  startedBy,
+  stepOffset,
+  wordAt,
+} from "../src/lib/lyrics.ts";
 
 function line(
   index: number,
@@ -85,11 +94,16 @@ test("an untimed line is never current", () => {
   assert.equal(startedBy([line(0, null, null)], 10_000), -1);
 });
 
-test("the offset moves the words, not the song", () => {
-  // "The lyrics are behind" is the common complaint, and a positive offset is
-  // the thing that fixes it: the line comes up earlier.
+test("a positive offset shows the words later", () => {
+  // The direction the word "offset" reads in, and the same as a subtitle
+  // delay: +300ms means every line comes up 300ms further into the song.
+  assert.equal(highlightAt(VERSE, 5_100).current, 1);
+  assert.equal(highlightAt(VERSE, 5_100, 300).current, 0);
+});
+
+test("a negative offset shows them earlier", () => {
   assert.equal(highlightAt(VERSE, 4_800).current, 0);
-  assert.equal(highlightAt(VERSE, 4_800, 300).current, 1);
+  assert.equal(highlightAt(VERSE, 4_800, -300).current, 1);
 });
 
 const SUNG = line(0, 1_000, 4_000, "שתי מילים כאן", [
@@ -119,6 +133,25 @@ test("a line with no word timings highlights no word", () => {
 });
 
 test("the offset applies to words too", () => {
-  assert.equal(wordAt(SUNG, 1_900), 0);
-  assert.equal(wordAt(SUNG, 1_900, 200), 1);
+  assert.equal(wordAt(SUNG, 2_100), 1);
+  assert.equal(wordAt(SUNG, 2_100, 200), 0);
+});
+
+test("a nudge moves by one step", () => {
+  assert.equal(stepOffset(0, OFFSET_STEP_MS), 100);
+  assert.equal(stepOffset(100, -OFFSET_STEP_MS), 0);
+});
+
+test("the nudge stops at the ends of the range", () => {
+  // Phase 0 measured whole-song biases of +180ms to +540ms; three seconds is
+  // already far past anything real, and a wider range only makes the control
+  // harder to use.
+  assert.equal(stepOffset(OFFSET_RANGE.max, OFFSET_STEP_MS), OFFSET_RANGE.max);
+  assert.equal(stepOffset(OFFSET_RANGE.min, -OFFSET_STEP_MS), OFFSET_RANGE.min);
+});
+
+test("a stored offset from outside the range is brought back inside it", () => {
+  // A hand-edited row, or a wider range in some future version.
+  assert.equal(clampOffset(99_000), OFFSET_RANGE.max);
+  assert.equal(clampOffset(Number.NaN), 0);
 });

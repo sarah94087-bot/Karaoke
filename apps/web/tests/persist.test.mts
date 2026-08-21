@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   createSaver,
   keyOf,
+  offsetOf,
   sameSettings,
   tempoOf,
   toMix,
@@ -140,4 +141,22 @@ test("cancelling stops a pending save, for an unmounting player", async () => {
   await tick(60);
 
   assert.equal(calls, 0);
+});
+
+/**
+ * T-2.7. The offset used to be hardcoded to zero here, which was harmless only
+ * because nothing could set one: the moment the control existed, every fader
+ * drag would have quietly reset the timing someone had just adjusted.
+ */
+test("the lyrics offset survives a save", () => {
+  assert.equal(toSettings(DEFAULT_MIX, 0, 1, 300).lyric_offset_ms, 300);
+});
+
+test("a save with no offset given leaves it at zero", () => {
+  assert.equal(toSettings(DEFAULT_MIX, 0, 1).lyric_offset_ms, 0);
+});
+
+test("the offset comes back out of a stored row", () => {
+  assert.equal(offsetOf({ ...DEFAULT_SETTINGS, lyric_offset_ms: -400 }), -400);
+  assert.equal(offsetOf(null), 0);
 });

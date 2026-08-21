@@ -43,7 +43,12 @@
   "lyrics": {
     "title": "Lyrics",
     "pending": "The words are on their way. Start singing — they will come in as you go.",
-    "missing": "No lyrics for this song yet. You can add them in the editor."
+    "missing": "No lyrics for this song yet. You can add them in the editor.",
+    "offset": "Lyrics timing",
+    "earlier": "Words earlier",
+    "later": "Words later",
+    "reset": "Reset",
+    "seconds": "s"
   },
   "mixer": {
     "title": "Mixer",

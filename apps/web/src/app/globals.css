@@ -679,3 +679,49 @@ a.playable-banner:hover {
     font-size: 1.35rem;
   }
 }
+
+/* --- the lyrics offset (T-2.7) -------------------------------------------- */
+
+.lyric-offset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 1rem;
+}
+
+.lyric-offset-label {
+  color: var(--muted);
+}
+
+.lyric-offset-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lyric-offset-buttons button {
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  font-size: 1.1rem;
+}
+
+.lyric-offset-value {
+  min-inline-size: 6ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/*
+ * A signed number inside a Hebrew line: without isolation `+0.3` renders with
+ * the sign on the wrong end, which is the same trap the durations hit in T-1.10.
+ */
+.ltr-number {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.lyric-offset-reset {
+  font-size: 0.95rem;
+}
