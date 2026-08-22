@@ -17,6 +17,7 @@ is what makes T-3.1's "read only through a URL that expires" cheap enough to do
 on every song open.
 """
 
+import base64
 import datetime as dt
 import hashlib
 import hmac
@@ -123,12 +124,23 @@ class S3Storage:
         """
         return f"/{_quote_path(self.config.bucket)}" + (f"/{_quote_path(key)}" if key else "")
 
-    def presign(self, key: str, expires_in: int, *, now: dt.datetime | None = None) -> str:
-        """A GET URL that stops working after `expires_in` seconds.
+    def presign(
+        self,
+        key: str,
+        expires_in: int,
+        *,
+        method: str = "GET",
+        now: dt.datetime | None = None,
+    ) -> str:
+        """A URL for one method on one key that stops working after `expires_in`.
 
-        Query-string authentication, so the browser needs no headers and loading
-        a stem stays an ordinary request that a `fetch` or an `<audio>` element
-        can make.
+        Query-string authentication, so the browser needs no headers: loading a
+        stem stays an ordinary request a `fetch` or an `<audio>` element can
+        make, and uploading one is an ordinary `PUT` with the file as the body.
+
+        The method is part of the canonical request, so a read link is not a
+        write link - S3 gets this right for the same reason the local backend
+        had to be taught it.
         """
         moment = now or dt.datetime.now(dt.UTC)
         stamp = moment.strftime("%Y%m%dT%H%M%SZ")
@@ -143,7 +155,14 @@ class S3Storage:
         }
         uri = self._uri(validate_key(key))
         canonical = "\n".join(
-            ["GET", uri, _canonical_query(params), f"host:{self._host()}\n", "host", UNSIGNED]
+            [
+                method.upper(),
+                uri,
+                _canonical_query(params),
+                f"host:{self._host()}\n",
+                "host",
+                UNSIGNED,
+            ]
         )
         params["X-Amz-Signature"] = hmac.new(
             _signing_key(self.config.secret_access_key, date, self.config.region),
@@ -286,3 +305,65 @@ class S3Storage:
 
     def signed_url(self, key: str, expires_in: int) -> str:
         return self.presign(key, expires_in)
+
+    # -- the bucket itself ---------------------------------------------------
+
+    def set_cors(self, origins: list[str], *, max_age: int = 3600) -> None:
+        """Let those origins upload and download directly (T-3.2).
+
+        Without this the browser refuses before it ever asks B2: a presigned URL
+        is perfectly valid and the fetch is still cross-origin. `PUT` is here
+        for the upload and `GET`/`HEAD` for the player, and the origins are the
+        API's own `KARUKI_CORS_ORIGINS`, so the two lists cannot drift.
+
+        In code rather than in the console because a rule nobody can re-apply is
+        a rule that gets lost at the next deployment.
+        """
+        rules = "".join(
+            f"<CORSRule><AllowedOrigin>{origin}</AllowedOrigin>"
+            "<AllowedMethod>GET</AllowedMethod>"
+            "<AllowedMethod>HEAD</AllowedMethod>"
+            "<AllowedMethod>PUT</AllowedMethod>"
+            "<AllowedHeader>*</AllowedHeader>"
+            "<ExposeHeader>ETag</ExposeHeader>"
+            f"<MaxAgeSeconds>{int(max_age)}</MaxAgeSeconds></CORSRule>"
+            for origin in origins
+        )
+        body = (
+            f'<?xml version="1.0" encoding="UTF-8"?><CORSConfiguration>{rules}</CORSConfiguration>'
+        )
+        self._call(
+            "PUT",
+            "",
+            params={"cors": ""},
+            body=body.encode(),
+            # Required on this subresource by S3 and by B2. Not part of the
+            # signature, so a missing one fails as a 400 rather than a 403.
+            headers={
+                "Content-Type": "application/xml",
+                "Content-MD5": base64.b64encode(hashlib.md5(body.encode()).digest()).decode(),
+            },
+        )
+
+    def get_cors(self) -> list[str]:
+        """The origins the bucket currently allows, for reading back a change."""
+        try:
+            raw = self._call("GET", "", params={"cors": ""})
+        except StorageError:
+            return []
+        root = ET.fromstring(raw.decode("utf-8"))
+        return [
+            node.text or ""
+            for node in root.iter()
+            if node.tag.rsplit("}", 1)[-1] == "AllowedOrigin"
+        ]
+
+    def signed_upload_url(self, key: str, expires_in: int) -> str:
+        """Where the browser PUTs the file (T-3.2).
+
+        The bytes never touch the API. What the API keeps is the right to say
+        *which* key may be written and *for how long* - that is the whole of the
+        authorisation, and it is why this is computed here rather than by
+        handing the browser a credential.
+        """
+        return self.presign(key, expires_in, method="PUT")

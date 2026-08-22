@@ -92,6 +92,15 @@ class Storage(Protocol):
         """A URL that serves the object and stops working after `expires_in` seconds."""
         ...
 
+    def signed_upload_url(self, key: str, expires_in: int) -> str:
+        """A URL a browser can PUT the bytes to, without the API in the path.
+
+        Chapter 6's `POST /songs/upload-url` (T-3.2). Separate from `signed_url`
+        rather than a flag on it, because a read link must never be usable as a
+        write link - the method is part of what is signed.
+        """
+        ...
+
 
 def validate_key(key: str) -> str:
     """Keys are object keys, so the traversal a path would allow is not allowed.
@@ -109,24 +118,30 @@ def validate_key(key: str) -> str:
     return key
 
 
-def sign(secret: str, key: str, expires: int) -> str:
+def sign(secret: str, key: str, expires: int, method: str = "GET") -> str:
     """The signature carried by a LocalStorage URL.
 
-    The expiry is *inside* the signed message, which is the whole point: a
-    client that edits `expires=` in the address bar invalidates the signature it
-    was given rather than extending it.
+    Two things sit inside the signed message besides the key, and both matter:
+
+    * the **expiry**, so a client that edits `expires=` in the address bar
+      invalidates the signature it was given rather than extending it;
+    * the **method**, so a link handed out to read a stem cannot be turned into
+      permission to overwrite it. The links `signed_url` and
+      `signed_upload_url` produce look alike and are not interchangeable.
     """
-    message = f"{key}\n{expires}".encode()
+    message = f"{method.upper()}\n{key}\n{expires}".encode()
     return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
 
 
-def check_signature(secret: str, key: str, expires: str, signature: str, *, now: int) -> None:
-    """Raise unless `signature` is ours and the link has not run out."""
+def check_signature(
+    secret: str, key: str, expires: str, signature: str, *, now: int, method: str = "GET"
+) -> None:
+    """Raise unless `signature` is ours, for this method, and still in date."""
     try:
         deadline = int(expires)
     except (TypeError, ValueError) as exc:
         raise SignatureError("malformed expiry") from exc
-    if not hmac.compare_digest(sign(secret, key, deadline), signature or ""):
+    if not hmac.compare_digest(sign(secret, key, deadline, method), signature or ""):
         raise SignatureError("bad signature")
     # Checked after the signature on purpose: answering "expired" to an
     # unsigned guess would confirm that the key exists.
@@ -195,17 +210,36 @@ class LocalStorage:
             raise StorageError(f"no such object: {key}")
         return path
 
-    def signed_url(self, key: str, expires_in: int) -> str:
+    def _signed(self, key: str, expires_in: int, method: str) -> str:
         expires = int(time.time()) + int(expires_in)
-        signature = sign(self.secret, validate_key(key), expires)
+        signature = sign(self.secret, validate_key(key), expires, method)
         path = quote(key, safe="/")
         return f"{self.base_url}/api/v1/files/{path}?expires={expires}&sig={signature}"
+
+    def signed_url(self, key: str, expires_in: int) -> str:
+        return self._signed(key, expires_in, "GET")
+
+    def signed_upload_url(self, key: str, expires_in: int) -> str:
+        return self._signed(key, expires_in, "PUT")
 
     def open_signed(self, key: str, expires: str, signature: str) -> Path:
         """The read half of `signed_url`, for the endpoint that serves it."""
         checked = validate_key(key)
         check_signature(self.secret, checked, expires, signature, now=int(time.time()))
         return self.local_path(checked)
+
+    def accept_signed(self, key: str, expires: str, signature: str, source: Path) -> StoredObject:
+        """The write half of `signed_upload_url`.
+
+        The local stand-in for a browser PUT straight to the bucket. Same
+        signature check, same expiry, and a `GET` link presented here fails on
+        the method before anything is written.
+        """
+        checked = validate_key(key)
+        check_signature(
+            self.secret, checked, expires, signature, now=int(time.time()), method="PUT"
+        )
+        return self.put(checked, source)
 
 
 def get_storage(

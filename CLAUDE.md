@@ -71,6 +71,13 @@ The same step in the image, which is how it runs on deploy:
 docker compose -f infra\docker\compose.yaml run --rm api alembic upgrade head
 ```
 
+Apply the bucket's CORS rule (needed once per bucket, and again when a
+deployment adds its own origin):
+
+```
+.venv\Scripts\python.exe scriptsucket_cors.py --apply
+```
+
 Deploy / measure the GPU function:
 
 ```
@@ -156,9 +163,8 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-Phase 3 (cloud and multiple users) is under way. `T-3.1` is written and verified
-against the local backend; the object store half is waiting on the B2 account —
-see the bottom of this file.
+Phase 3 (cloud and multiple users) is under way: `T-3.1` and `T-3.2` are done —
+object storage with expiring links, and uploads that go straight to the bucket.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -970,5 +976,49 @@ the bucket without the API in the path). Private, SSE-B2 on, object lock off,
 and lifecycle set to **keep only the last version** — a re-run of separation
 rewrites the same key, and "keep all versions" would have doubled the stored
 bytes of every reprocessed song against a 10GB quota.
+
+From `T-3.2`:
+
+- **The file goes browser → bucket. The API is not in the path.** Chapter 6's
+  three steps: `POST /songs/upload-url` hands out a ticket, the browser `PUT`s
+  the bytes to it, `POST /songs` is given the key. What T-1.5 did — 30MB through
+  the API — stays as `POST /songs/upload`, because it is what the test suite
+  and `curl` use and it is the fallback when a bucket cannot be reached
+  directly. The screens no longer use it.
+- **The ticket is deliberately narrow: one key, one method, one hour.** The
+  client chooses none of it. The key is always `uploads/<uuid>/original<suffix>`
+  and `POST /songs` accepts no other shape, so a ticket cannot be talked into
+  writing over a stem, and `POST /songs` cannot be talked into reading one.
+- **The method is inside the signature** on both backends. Without that, every
+  stem URL the player is handed would also be permission to overwrite that stem.
+- Size is checked **twice**, because the first check is on a claim: the declared
+  size refuses the ticket before the upload, and the object that actually
+  arrived is measured before it is ingested (and deleted if it is over). The
+  local `PUT` route additionally refuses as the bytes arrive, the same rule
+  T-1.5 has.
+- The staging object is deleted once the song exists — in a `finally`, so a file
+  that failed to ingest does not sit in the bucket either. Left behind, every
+  upload would cost twice the storage of the song it produced.
+- **`POST /songs` still reads the bytes once**, because normalising is ffmpeg's
+  job and ffmpeg needs a file. With the object store that is a download of what
+  the browser has just uploaded. Chapter 3's "the API never handles audio" is
+  about the *transfer*, and that part is now true.
+- The upload screen shows a **real percentage**, which needs `XMLHttpRequest`:
+  `fetch` still cannot report progress while a body is being sent, and a 30MB
+  upload with no progress is indistinguishable from a hung one.
+- **The bucket needed a CORS rule, and it is code rather than a console click.**
+  `scripts/bucket_cors.py --apply` writes it from `KARUKI_CORS_ORIGINS` — the
+  same list the API allows for itself, so the two cannot drift. Re-run it when
+  `T-3.10` adds the production origin.
+- Verified live, twice. On the **local** backend in a browser: `upload-url` →
+  `PUT /api/v1/files/... 201` → `POST /songs 201` → the progress screen showing
+  "מפריד ערוצים". On the **s3** backend, against the real bucket: a browser
+  `PUT` straight to `s3.eu-central-003.backblazeb2.com` answering **200** with
+  the API never in the path, a song built from it and processed to `ready`, and
+  the player then fetching all four stems **from B2** (0.72–0.88s each) — which
+  is what the CORS rule fixed and what did not work at the end of `T-3.1`.
+  Playback itself was not re-observed on this run: the browser pane was not
+  displayed, so the audio context never got the user gesture it needs. The same
+  code path played on the local backend in `T-3.1`.
 
 `D-15`/`D-16` (database and auth) are still open.

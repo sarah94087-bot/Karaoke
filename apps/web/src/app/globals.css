@@ -181,6 +181,17 @@ h1 {
 
 /* --- upload and progress -------------------------------------------------- */
 
+.upload-progress {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.progress-line {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 .page-header {
   display: flex;
   flex-wrap: wrap;

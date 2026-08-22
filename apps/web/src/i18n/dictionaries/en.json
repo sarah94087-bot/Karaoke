@@ -14,7 +14,11 @@
     "selected": "Selected",
     "submit": "Upload",
     "uploading": "Uploading…",
-    "alreadyExisted": "This song is already in the library, so it was not processed again."
+    "alreadyExisted": "This song is already in the library, so it was not processed again.",
+    "sending": "Uploading the file",
+    "percent": "{n}%",
+    "preparing": "Getting ready",
+    "finishing": "Finishing up"
   },
   "progress": {
     "title": "Processing the song",
@@ -155,6 +159,7 @@
     "processing_unavailable": "Processing cannot start right now. Try again in a moment.",
     "invalid_request": "The request was not valid.",
     "internal_error": "Something went wrong on our side. You can try again.",
+    "upload_not_found": "The uploaded file was not found. Try uploading it again.",
     "link_invalid": "This file link is no longer valid. Reload the page to get a fresh one.",
     "file_missing": "The file is no longer in storage. The song needs processing again.",
     "invalid_lyrics": "The lyrics were not saved: a line has a timing that cannot be right. Check the lines and try again.",
@@ -162,6 +167,7 @@
     "lyrics_save_conflict": "Another save of these lyrics landed a moment before yours. Try saving again.",
     "lyrics_version_not_found": "That version of the lyrics does not exist.",
     "lyrics_match_not_found": "The open lyrics database has no timed lyrics for this song. You can type or paste them in the editor.",
-    "unknown": "Something went wrong. You can try again."
+    "unknown": "Something went wrong. You can try again.",
+    "upload_failed": "The upload did not finish. Try again."
   }
 }

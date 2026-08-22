@@ -285,6 +285,50 @@ def test_a_refused_request_is_a_storage_error_with_the_service_reply_in_it():
         S3Storage(CONFIG, opener=refused).local_path("songs/a/vocals.mp3")
 
 
+# -- the bucket's own settings -----------------------------------------------
+
+
+def test_set_cors_asks_the_bucket_for_exactly_the_origins_it_was_given():
+    """Without this rule the browser refuses before B2 is ever asked: the
+    presigned URL is valid and the request is still cross-origin."""
+    storage, opener = store()
+
+    storage.set_cors(["http://localhost:3000"], max_age=3600)
+
+    request = opener.last
+    body = request.data.decode()
+    assert request.full_url.endswith("/karuki-songs?cors=")
+    assert "<AllowedOrigin>http://localhost:3000</AllowedOrigin>" in body
+    assert "<AllowedMethod>PUT</AllowedMethod>" in body, "the upload"
+    assert "<AllowedMethod>GET</AllowedMethod>" in body, "the player"
+    assert "<MaxAgeSeconds>3600</MaxAgeSeconds>" in body
+    assert request.headers["Content-md5"], "S3 requires it on this subresource"
+
+
+def test_get_cors_reads_the_origins_back():
+    listing = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<CORSConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+        "<CORSRule><AllowedOrigin>http://localhost:3000</AllowedOrigin></CORSRule>"
+        "</CORSConfiguration>"
+    )
+    storage, _ = store(listing.encode())
+
+    assert storage.get_cors() == ["http://localhost:3000"]
+
+
+def test_a_bucket_with_no_rule_reads_as_no_origins():
+    """B2 answers a bucket with no CORS configuration with an error, and "none"
+    is the honest reading of it - not a crash on the way to setting one."""
+
+    def missing(request: object, timeout: float = 0) -> Response:
+        raise urllib.error.HTTPError(
+            "https://example", 404, "Not Found", {}, io.BytesIO(b"<Error/>")
+        )
+
+    assert S3Storage(CONFIG, opener=missing).get_cors() == []
+
+
 # -- configuration -----------------------------------------------------------
 
 

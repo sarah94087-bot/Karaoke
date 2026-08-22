@@ -68,7 +68,7 @@ export class ApiError extends Error {
   readonly code: string;
   readonly requestId: string | null;
 
-  constructor(code: string, message: string, requestId: string | null) {
+  constructor(code: string, message: string, requestId: string | null = null) {
     super(message);
     this.code = code;
     this.requestId = requestId;
@@ -258,12 +258,19 @@ export function saveLyrics(
 }
 
 /**
- * Stem URLs come back relative to the API root, because in phase 3 they become
- * signed absolute URLs from an object store and the player must not care which
- * it was given.
+ * A signed link, made absolute.
+ *
+ * With the object store the API hands out absolute URLs at the bucket; with the
+ * local backend it hands out root-relative ones at the API. Neither the player
+ * nor the upload screen should care which it was given, so both go through
+ * here.
  */
+export function signedUrl(url: string): string {
+  return url.startsWith("http") ? url : `${API_BASE.replace(/\/api\/v1$/, "")}${url}`;
+}
+
 export function stemUrl(link: StemLink): string {
-  return link.url.startsWith("http") ? link.url : `${API_BASE.replace(/\/api\/v1$/, "")}${link.url}`;
+  return signedUrl(link.url);
 }
 
 export function saveSettings(
@@ -290,10 +297,63 @@ export function jobEventsUrl(jobId: string): string {
   return `${API_BASE}/jobs/${jobId}/events`;
 }
 
-export async function uploadSong(file: File): Promise<UploadResult> {
-  const body = new FormData();
-  body.append("file", file);
-  // No Content-Type header: the browser has to set it, because only the browser
-  // knows the multipart boundary it generated.
-  return request<UploadResult>("/songs/upload", { method: "POST", body });
+export interface UploadTicket {
+  key: string;
+  url: string;
+  method: string;
+  expires_in: number;
+  max_bytes: number;
+}
+
+/** Step one of chapter 6's upload: ask where to put the file. */
+export function createUploadTicket(file: File): Promise<UploadTicket> {
+  return request<UploadTicket>("/songs/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, bytes: file.size }),
+  });
+}
+
+/**
+ * Step two: the file goes straight to storage, and the API is not in the path.
+ *
+ * `XMLHttpRequest` rather than `fetch`, for the one thing fetch still cannot
+ * do: report progress while a body is being *sent*. A 30MB upload with no
+ * progress is indistinguishable from a hung one, and this is the screen where
+ * the wait is longest.
+ */
+export function putToStorage(
+  ticket: UploadTicket,
+  file: File,
+  onProgress: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(ticket.method, signedUrl(ticket.url));
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress(event.loaded / event.total);
+    });
+    request.addEventListener("load", () => {
+      // Storage answers with XML, not with this API's error shape, so there is
+      // nothing here to translate: any failure is one Hebrew sentence.
+      if (request.status >= 200 && request.status < 300) resolve();
+      else reject(new ApiError("upload_failed", `storage answered ${request.status}`));
+    });
+    request.addEventListener("error", () =>
+      reject(new ApiError("upload_failed", "the upload did not reach storage")),
+    );
+    request.addEventListener("abort", () =>
+      reject(new ApiError("upload_failed", "the upload was cancelled")),
+    );
+    request.send(file);
+  });
+}
+
+/** Step three: make the song from what was uploaded, and start the work. */
+export function createSong(uploadKey: string, filename: string): Promise<UploadResult> {
+  return request<UploadResult>("/songs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ upload_key: uploadKey, filename }),
+  });
 }

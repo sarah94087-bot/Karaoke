@@ -12,6 +12,7 @@ which way the bytes travelled.
 """
 
 import hashlib
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -21,6 +22,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.audio.normalize import (
     TARGET_CHANNELS,
@@ -34,11 +36,12 @@ from packages.core.enums import SongStatus, SourceType, StemKind
 from packages.core.models import Job, Song, UserSongSettings
 from packages.core.settings import get_settings, save_settings
 from packages.core.stems import stems_for
-from packages.providers.storage import Storage
+from packages.providers.storage import Storage, StorageError
 
 from ..config import settings
 from ..deps import RunnerDep, SessionDep, StorageDep
 from ..errors import ApiError
+from ..runner import JobRunner
 
 router = APIRouter(tags=["songs"])
 
@@ -97,6 +100,32 @@ class LibrarySong(BaseModel):
     job: SongJob | None = Field(
         default=None, description="The most recent job, or null for a song that never had one."
     )
+
+
+class UploadTicket(BaseModel):
+    """Where to PUT the file, and for how long (chapter 6's upload-url)."""
+
+    key: str = Field(description="Hand this back to POST /songs once the PUT has finished.")
+    url: str = Field(description="Signed. Absolute with the object store, relative without.")
+    method: str = "PUT"
+    expires_in: int
+    max_bytes: int = Field(description="What the server will accept, whatever was declared.")
+
+
+class UploadUrlRequest(BaseModel):
+    filename: str = Field(description="Used for the suffix and, later, for the title.")
+    bytes: int = Field(
+        ge=1,
+        description="What the browser says the file weighs. A claim, checked again after the "
+        "upload against the object that actually arrived.",
+    )
+
+
+class SongFromUpload(BaseModel):
+    """Chapter 6's `POST /songs`: the bytes are already in storage."""
+
+    upload_key: str
+    filename: str
 
 
 class Library(BaseModel):
@@ -341,6 +370,108 @@ async def put_settings(
     return _as_settings(saved)
 
 
+# Chapter 6's direct-upload pair. `uploads/<token>/original<suffix>` is the only
+# shape of key these will sign or accept: the client chooses none of it, so a
+# ticket cannot be talked into writing over a stem.
+UPLOAD_KEY = re.compile(r"^uploads/[0-9a-f-]{36}/original(\.[a-z0-9]{1,5})$")
+
+
+@router.post(
+    "/songs/upload-url",
+    response_model=UploadTicket,
+    summary="Where to send the file",
+)
+async def upload_url(storage: StorageDep, body: UploadUrlRequest) -> UploadTicket:
+    """Chapter 6: the file goes straight to storage, not through the API.
+
+    What this hands out is narrow on purpose - one key, one method, one hour.
+    The API keeps the right to say *where* the bytes may land and *for how
+    long*, and gives away nothing else; there is no credential in the browser.
+    """
+    suffix = Path(body.filename or "").suffix.lower()
+    if suffix not in ACCEPTED_SUFFIXES:
+        raise ApiError("unsupported_format", f"{suffix or 'that file type'} is not supported")
+    if body.bytes > settings.max_upload_bytes:
+        # Refusing on the declared size saves the upload rather than the check:
+        # the real size is checked again in POST /songs, because this number is
+        # a claim from the browser.
+        raise ApiError(
+            "file_too_large",
+            f"the file is larger than {settings.max_upload_bytes // (1024 * 1024)}MB",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        )
+
+    key = f"uploads/{uuid.uuid4()}/original{suffix}"
+    return UploadTicket(
+        key=key,
+        url=storage.signed_upload_url(key, settings.signed_url_ttl),
+        expires_in=settings.signed_url_ttl,
+        max_bytes=settings.max_upload_bytes,
+    )
+
+
+@router.post(
+    "/songs",
+    response_model=SongCreated,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a song from an uploaded file and start the work",
+    responses={
+        200: {"description": "The same audio was already here; the existing song is returned."}
+    },
+)
+async def create_song(
+    response: Response,
+    session: SessionDep,
+    storage: StorageDep,
+    runner: RunnerDep,
+    body: SongFromUpload,
+) -> SongCreated:
+    """The second half of the direct upload, and chapter 6's `POST /songs`.
+
+    The bytes are in storage already. They are read once here, because
+    normalising is ffmpeg's job and ffmpeg needs a file - so with the object
+    store this downloads what the browser just uploaded. That is one transfer,
+    not the 30MB through the API that T-1.5 did, and it is what D-14 and the
+    hashing both need.
+    """
+    if not UPLOAD_KEY.match(body.upload_key):
+        raise ApiError("invalid_request", "that is not an upload key")
+
+    try:
+        original = storage.local_path(body.upload_key)
+    except StorageError as exc:
+        # The usual cause is a PUT that never happened or that failed silently.
+        raise ApiError("upload_not_found", "no file was uploaded under that key", 404) from exc
+
+    prefix = body.upload_key.rsplit("/", 1)[0]
+    if original.stat().st_size > settings.max_upload_bytes:
+        # The size was a claim when the ticket was issued; this is the object
+        # that actually arrived. Removed rather than left sitting in the bucket.
+        storage.delete_prefix(prefix)
+        raise ApiError(
+            "file_too_large",
+            f"the file is larger than {settings.max_upload_bytes // (1024 * 1024)}MB",
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        )
+
+    try:
+        created = await _ingest(
+            session,
+            storage,
+            runner,
+            response,
+            original,
+            filename=body.filename,
+            # From the key we issued, not from the file the backend handed back.
+            suffix=Path(body.upload_key).suffix,
+        )
+    finally:
+        # Whatever happened, the staging copy has no further use: it was either
+        # taken over by the song or it is a file nobody will look for again.
+        storage.delete_prefix(prefix)
+    return created
+
+
 @router.post(
     "/songs/upload",
     response_model=SongCreated,
@@ -362,11 +493,32 @@ async def upload_song(
         raise ApiError("unsupported_format", f"{suffix or 'that file type'} is not supported")
 
     with tempfile.TemporaryDirectory(prefix="karuki-upload-") as tmp:
-        work = Path(tmp)
-        original = work / f"original{suffix}"
+        original = Path(tmp) / f"original{suffix}"
         await _spool(file, original, settings.max_upload_bytes)
 
-        normalised = work / "normalised.wav"
+        return await _ingest(
+            session, storage, runner, response, original, filename=file.filename, suffix=suffix
+        )
+
+
+async def _ingest(
+    session: AsyncSession,
+    storage: Storage,
+    runner: JobRunner,
+    response: Response,
+    original: Path,
+    *,
+    filename: str | None,
+    suffix: str,
+) -> SongCreated:
+    """Normalise, dedup, record, and start the job.
+
+    Shared by both ways in (T-1.5's upload through the API and T-3.2's upload
+    straight to storage) because everything from here on is the same work: only
+    how the bytes arrived differs, and that difference ends at this line.
+    """
+    with tempfile.TemporaryDirectory(prefix="karuki-ingest-") as tmp:
+        normalised = Path(tmp) / "normalised.wav"
         try:
             info = normalise(original, normalised)
         except ToolMissing as exc:
@@ -387,9 +539,9 @@ async def upload_song(
 
         song = Song(
             id=uuid.uuid4(),
-            title=_title_from(file.filename),
+            title=_title_from(filename),
             source_type=SourceType.FILE,
-            source_ref=file.filename,
+            source_ref=filename,
             content_hash=content_hash,
             duration_sec=int(info.duration_sec),
             status=SongStatus.PENDING,
@@ -399,7 +551,7 @@ async def upload_song(
         # survive to point at files that are not there.
         await session.flush()
 
-        _store(storage, song.id, original, normalised)
+        _store(storage, song.id, original, normalised, suffix)
 
         # Chapter 6: creating a song starts the work and returns a job_id
         # immediately. The job is queued inside the transaction and only
@@ -412,17 +564,25 @@ async def upload_song(
     return _created(song, already_existed=False, job_id=job.id)
 
 
-def _store(storage: Storage, song_id: uuid.UUID, original: Path, normalised: Path) -> None:
+def _store(
+    storage: Storage, song_id: uuid.UUID, original: Path, normalised: Path, suffix: str
+) -> None:
     """Keep the upload as well as the normalised copy.
 
     Chapter 7 requires every stage to be re-runnable on its own from saved
     intermediates. Normalisation is a stage, so its input has to survive - and
     when a format turns out to convert badly, the original is the only way to
     find out why.
+
+    The suffix is passed in rather than read off `original.suffix`, which a live
+    run is what caught: with the object store, `local_path` hands back a cache
+    file named by a hash and with no extension at all, and the original landed
+    in the bucket as `original` - no format on it, and `application/octet-stream`
+    when it is read back. On disk the same code was right by accident.
     """
     prefix = f"songs/{song_id}"
     try:
-        storage.put(f"{prefix}/original{original.suffix}", original)
+        storage.put(f"{prefix}/original{suffix}", original)
         storage.put(f"{prefix}/normalised.wav", normalised)
     except Exception:
         storage.delete_prefix(prefix)

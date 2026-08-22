@@ -14,8 +14,10 @@ backends.
 """
 
 import logging
+import tempfile
+from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import FileResponse
 
 from packages.providers.storage import (
@@ -32,6 +34,8 @@ from ..errors import ApiError
 log = logging.getLogger("karuki.api")
 
 router = APIRouter(tags=["files"])
+
+CHUNK_BYTES = 1024 * 1024
 
 
 @router.get(
@@ -71,3 +75,60 @@ async def get_file(
         # from disk by a link that is no longer valid.
         headers={"Cache-Control": f"private, max-age={settings.signed_url_ttl}"},
     )
+
+
+@router.put(
+    "/files/{key:path}",
+    status_code=status.HTTP_201_CREATED,
+    summary="Store an object, if the link is still valid",
+    responses={
+        403: {"description": "The signature is wrong, for another method, or expired."},
+        413: {"description": "The body is larger than the upload limit."},
+    },
+)
+async def put_file(
+    request: Request,
+    storage: StorageDep,
+    key: str,
+    expires: str = Query(description="Unix seconds, part of what is signed."),
+    sig: str = Query(description="HMAC over the method, the key and the expiry."),
+) -> dict[str, object]:
+    """The local stand-in for a browser PUT straight into the bucket (T-3.2).
+
+    With the `s3` backend the browser never comes here: the signed upload URL
+    points at B2 and the bytes do not pass through this process at all. This is
+    what keeps that flow runnable on a machine with no bucket, and it is held to
+    the same rules - the signature covers the method, so a link handed out to
+    read a stem cannot be used to overwrite one.
+    """
+    if not isinstance(storage, LocalStorage):  # pragma: no cover - s3 never links here
+        raise ApiError("link_invalid", "this deployment does not accept uploads here", 404)
+
+    with tempfile.TemporaryDirectory(prefix="karuki-put-") as tmp:
+        landing = Path(tmp) / "body"
+        written = 0
+        with landing.open("wb") as sink:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > settings.max_upload_bytes:
+                    # Refused as the bytes arrive, which is the same rule
+                    # T-1.5's upload has and for the same reason: Content-Length
+                    # is a claim, and one instance cannot be talked into holding
+                    # a gigabyte.
+                    raise ApiError(
+                        "file_too_large",
+                        f"the file is larger than {settings.max_upload_bytes // (1024 * 1024)}MB",
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    )
+                sink.write(chunk)
+        if written == 0:
+            raise ApiError("empty_file", "the file is empty")
+
+        try:
+            stored = storage.accept_signed(key, expires, sig, landing)
+        except SignatureError as exc:
+            raise ApiError("link_invalid", str(exc), status_code=403) from exc
+        except StorageError as exc:
+            raise ApiError("invalid_request", str(exc)) from exc
+
+    return {"key": stored.key, "bytes": stored.bytes}
