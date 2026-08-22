@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Query, Response, UploadFile, status
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -32,12 +31,12 @@ from packages.audio.normalize import (
 )
 from packages.core import jobs as job_service
 from packages.core.enums import SongStatus, SourceType, StemKind
-from packages.core.models import Job, Song, Stem, UserSongSettings
+from packages.core.models import Job, Song, UserSongSettings
 from packages.core.settings import get_settings, save_settings
 from packages.core.stems import stems_for
-from packages.providers.storage import Storage, StorageError
+from packages.providers.storage import Storage
 
-from ..config import API_PREFIX, settings
+from ..config import settings
 from ..deps import RunnerDep, SessionDep, StorageDep
 from ..errors import ApiError
 
@@ -210,7 +209,10 @@ def _library_song(song: Song, job: Job | None) -> LibrarySong:
 
 class StemLink(BaseModel):
     kind: str = Field(examples=["vocals", "drums", "bass", "other"])
-    url: str = Field(description="Where to fetch the audio. Relative to the API root.")
+    url: str = Field(
+        description="A signed link to the audio, valid for KARUKI_SIGNED_URL_TTL seconds. "
+        "Absolute with the object store, root-relative with the local backend."
+    )
     format: str
     bytes: int
 
@@ -273,10 +275,12 @@ class SongDetail(BaseModel):
     response_model=SongDetail,
     summary="A song and its stems",
 )
-async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
-    """Chapter 6 hands out *signed* URLs here, which needs an object store and
-    therefore D-12. Until then the URLs point back at this API, which is the
-    same contract from the player's side: fetch what you are given."""
+async def get_song(session: SessionDep, storage: StorageDep, song_id: uuid.UUID) -> SongDetail:
+    """Chapter 6 hands out *signed* URLs here, and since T-3.1 that is what
+    these are: a link that carries its own authority and stops working after
+    `KARUKI_SIGNED_URL_TTL`. The player is unchanged by which backend signed it
+    - an S3 presigned URL is absolute, a local one is root-relative, and both
+    are "fetch what you are given"."""
     song = await session.get(Song, song_id)
     if song is None:
         raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
@@ -298,7 +302,7 @@ async def get_song(session: SessionDep, song_id: uuid.UUID) -> SongDetail:
         stems=[
             StemLink(
                 kind=stem.kind,
-                url=f"{API_PREFIX}/songs/{song.id}/stems/{stem.kind}",
+                url=storage.signed_url(stem.storage_key, settings.signed_url_ttl),
                 format=stem.format,
                 bytes=stem.bytes,
             )
@@ -335,37 +339,6 @@ async def put_settings(
         lyric_offset_ms=body.lyric_offset_ms,
     )
     return _as_settings(saved)
-
-
-@router.get(
-    "/songs/{song_id}/stems/{kind}",
-    response_class=FileResponse,
-    summary="One stem's audio",
-    responses={200: {"content": {"audio/mpeg": {}}, "description": "The stem audio."}},
-)
-async def get_stem(
-    session: SessionDep, storage: StorageDep, song_id: uuid.UUID, kind: str
-) -> FileResponse:
-    """The stand-in for a signed URL (D-12).
-
-    Served with a long cache lifetime and marked immutable: a stem never changes
-    once written - a re-run replaces the row and the key stays the same - and the
-    player fetches four of these every time a song is opened.
-    """
-    stem = await session.scalar(select(Stem).where(Stem.song_id == song_id, Stem.kind == kind))
-    if stem is None:
-        raise ApiError("stem_not_found", "no such stem", status_code=status.HTTP_404_NOT_FOUND)
-
-    try:
-        path = storage.local_path(stem.storage_key)
-    except StorageError as exc:
-        raise ApiError("stem_missing", str(exc), status_code=410) from exc
-
-    return FileResponse(
-        path,
-        media_type="audio/mpeg" if stem.format == "mp3" else "application/octet-stream",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-    )
 
 
 @router.post(

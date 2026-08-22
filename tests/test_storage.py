@@ -1,15 +1,22 @@
 """The storage seam (packages/providers/storage.py).
 
-D-12 is deferred, so phase 1 writes to disk. These tests are about the contract
-an object store will have to satisfy, not about the filesystem: keys, overwrite,
-prefix deletion, and refusing a key that would escape the root.
+These tests are about the contract the object store has to satisfy too, not
+about the filesystem: keys, overwrite, prefix deletion, refusing a key that
+would escape the root - and, since T-3.1, links that expire.
 """
 
+import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from packages.providers.storage import LocalStorage, StorageError
+from packages.providers.storage import (
+    LocalStorage,
+    SignatureError,
+    StorageError,
+    get_storage,
+)
 
 
 @pytest.fixture
@@ -83,3 +90,75 @@ def test_the_root_is_created_if_it_does_not_exist(tmp_path: Path):
     LocalStorage(root)
 
     assert root.is_dir()
+
+
+def signed(storage: LocalStorage, key: str, expires_in: int = 60) -> tuple[str, str, str]:
+    """A signed URL, taken apart into what the endpoint receives."""
+    query = parse_qs(urlparse(storage.signed_url(key, expires_in)).query)
+    return key, query["expires"][0], query["sig"][0]
+
+
+def test_a_signed_link_opens_the_object(storage: LocalStorage, tmp_path: Path):
+    storage.put("songs/a/vocals.mp3", source_file(tmp_path, data=b"sung"))
+
+    assert storage.open_signed(*signed(storage, "songs/a/vocals.mp3")).read_bytes() == b"sung"
+
+
+def test_a_link_that_has_run_out_does_not_open_it(storage: LocalStorage, tmp_path: Path):
+    storage.put("songs/a/vocals.mp3", source_file(tmp_path))
+
+    with pytest.raises(SignatureError):
+        storage.open_signed(*signed(storage, "songs/a/vocals.mp3", expires_in=-1))
+
+
+def test_the_deadline_cannot_be_moved(storage: LocalStorage, tmp_path: Path):
+    """It is inside the signed message, so editing it invalidates the link
+    rather than extending it. The whole of T-3.1 rests on this."""
+    storage.put("songs/a/vocals.mp3", source_file(tmp_path))
+    key, expires, signature = signed(storage, "songs/a/vocals.mp3")
+
+    with pytest.raises(SignatureError):
+        storage.open_signed(key, str(int(expires) + 86_400), signature)
+
+
+def test_a_signature_from_another_deployment_does_not_open_it(tmp_path: Path):
+    """Two instances with different secrets must not honour each other's links -
+    which is also what makes an unset secret safe rather than convenient."""
+    mine = LocalStorage(tmp_path / "storage", secret="mine")
+    theirs = LocalStorage(tmp_path / "storage", secret="theirs")
+    mine.put("songs/a/vocals.mp3", source_file(tmp_path))
+
+    with pytest.raises(SignatureError):
+        mine.open_signed(*signed(theirs, "songs/a/vocals.mp3"))
+
+
+def test_a_signed_link_cannot_carry_a_key_out_of_the_root(storage: LocalStorage):
+    """The key on an incoming request is outright untrusted, whatever it is
+    signed with."""
+    with pytest.raises(StorageError):
+        storage.open_signed("../../secrets.txt", str(int(time.time()) + 60), "whatever")
+
+
+def test_the_url_points_at_the_public_base_when_there_is_one(tmp_path: Path):
+    storage = LocalStorage(tmp_path / "storage", secret="s", base_url="https://karuki.example/")
+
+    url = storage.signed_url("songs/a/vocals.mp3", 60)
+
+    assert url.startswith("https://karuki.example/api/v1/files/songs/a/vocals.mp3?")
+
+
+def test_an_unset_secret_is_random_rather_than_absent(tmp_path: Path):
+    """An empty secret must not mean a signature anyone can compute."""
+    one = LocalStorage(tmp_path / "one")
+    two = LocalStorage(tmp_path / "two")
+
+    assert one.secret and one.secret != two.secret
+
+
+def test_the_backend_is_chosen_by_name(tmp_path: Path):
+    assert isinstance(get_storage("local", root=tmp_path), LocalStorage)
+
+
+def test_an_unknown_backend_is_refused_rather_than_guessed(tmp_path: Path):
+    with pytest.raises(StorageError, match="unknown storage backend"):
+        get_storage("r2", root=tmp_path)

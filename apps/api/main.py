@@ -18,14 +18,14 @@ from packages.core.db import create_engine, session_factory
 from packages.core.jobs import recover_interrupted
 from packages.providers.lyrics_catalogue import get_catalogue
 from packages.providers.separation import get_separator
-from packages.providers.storage import LocalStorage
+from packages.providers.storage import Storage, get_storage
 from packages.providers.transcription import get_transcriber
 
 from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
 from .request_id import HEADER
-from .routers import jobs, lyrics, songs, system
+from .routers import files, jobs, lyrics, songs, system
 from .runner import JobRunner
 
 log = logging.getLogger("karuki.api")
@@ -38,6 +38,32 @@ Every response carries a `request_id`, echoed in the `X-Request-ID` header.
 """
 
 
+def build_storage() -> Storage:
+    """The storage backend named by the environment (D-12).
+
+    Assembled here rather than in the provider so that nothing under
+    `packages/` has to know the API's settings object exists.
+    """
+    s3 = None
+    if settings.storage_backend == "s3":
+        from packages.providers.storage_s3 import S3Config
+
+        s3 = S3Config(
+            endpoint=settings.s3_endpoint,
+            bucket=settings.s3_bucket,
+            region=settings.s3_region,
+            access_key_id=settings.s3_key_id,
+            secret_access_key=settings.s3_secret,
+        )
+    return get_storage(
+        settings.storage_backend,
+        root=Path(settings.storage_root),
+        secret=settings.signing_secret,
+        base_url=settings.public_base_url,
+        s3=s3,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Build the engine and the storage backend once, and let them go on exit.
@@ -47,7 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database outage; endpoints that actually need data fail on their own, in
     deps.get_session, with a code the web app can render.
     """
-    app.state.storage = LocalStorage(Path(settings.storage_root))
+    app.state.storage = build_storage()
     # One instance, shared by the job runner and by the manual search endpoint,
     # so there is a single place that decides which database is in use.
     app.state.catalogue = get_catalogue(settings.lyrics_catalogue)
@@ -119,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(songs.router, prefix=API_PREFIX)
     app.include_router(jobs.router, prefix=API_PREFIX)
     app.include_router(lyrics.router, prefix=API_PREFIX)
+    app.include_router(files.router, prefix=API_PREFIX)
     # Same handler, unprefixed and unlisted: the container HEALTHCHECK and the
     # external keep-alive cron are configured once and should not have to be
     # re-pointed when the API version prefix moves.

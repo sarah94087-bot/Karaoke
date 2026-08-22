@@ -37,12 +37,43 @@ class Settings:
     # API can actually see the DB.
     database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
 
-    # D-12 is deferred to phase 3, so phase 1 stores files on disk behind
-    # packages/providers/storage.py. In the container this is a volume; in
-    # production it becomes an object store and this setting goes away.
+    # D-12 (T-3.1): "local" writes to a directory, "s3" writes to the object
+    # store. Local stays the default because chapter 11 requires the whole
+    # product to run on a machine with no accounts on it - not, as with the
+    # separation backend, because the other one costs money.
+    storage_backend: str = field(
+        default_factory=lambda: os.getenv("KARUKI_STORAGE_BACKEND", "local")
+    )
+    # Where the local backend keeps its files. In the container this is a
+    # volume; with the s3 backend it is unused.
     storage_root: str = field(
         default_factory=lambda: os.getenv("KARUKI_STORAGE_ROOT", "var/storage")
     )
+    # Backblaze B2 speaks S3, so these are the ordinary four. The endpoint and
+    # region come from the bucket's page in the B2 console; the key pair is an
+    # application key, which is why nothing here mentions B2 by name - Storj or
+    # anything else S3-compatible is the same five values.
+    s3_endpoint: str = field(default_factory=lambda: os.getenv("KARUKI_S3_ENDPOINT", ""))
+    s3_bucket: str = field(default_factory=lambda: os.getenv("KARUKI_S3_BUCKET", ""))
+    s3_region: str = field(default_factory=lambda: os.getenv("KARUKI_S3_REGION", ""))
+    s3_key_id: str = field(default_factory=lambda: os.getenv("KARUKI_S3_KEY_ID", ""))
+    s3_secret: str = field(default_factory=lambda: os.getenv("KARUKI_S3_SECRET", ""))
+
+    # How long a stem link lives. A song is fetched whole (D-14) the moment the
+    # player opens, so this only has to outlast a download on a slow connection;
+    # an hour is generous for that and short enough that a link copied out of
+    # the network tab is not a permanent one.
+    signed_url_ttl: int = field(
+        default_factory=lambda: int(os.getenv("KARUKI_SIGNED_URL_TTL", "3600"))
+    )
+    # What the local backend signs with. Unset means a fresh random secret per
+    # process, which is safe (links stop working on restart) rather than
+    # convenient; a deployment sets it.
+    signing_secret: str = field(default_factory=lambda: os.getenv("KARUKI_SIGNING_SECRET", ""))
+    # Prepended to local signed URLs. Empty gives a root-relative URL, which is
+    # what the web app already resolves and what keeps the address right whether
+    # the API was reached on localhost or on 127.0.0.1.
+    public_base_url: str = field(default_factory=lambda: os.getenv("KARUKI_PUBLIC_BASE_URL", ""))
     # A rejection the user can act on, rather than a request that dies halfway
     # through. Eight minutes of 320kbps mp3 is about 19MB, so this is generous
     # while still refusing an upload that was never going to be a song.

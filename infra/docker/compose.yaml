@@ -42,11 +42,20 @@ services:
       KARUKI_ENV: local
       KARUKI_CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
       DATABASE_URL: postgresql://karuki:karuki@db:5432/karuki
+      KARUKI_STORAGE_BACKEND: ${KARUKI_STORAGE_BACKEND:-local}
       KARUKI_STORAGE_ROOT: /app/var/storage
       # Passed through from the host, never written here: this file is committed
       # and .env is not. Empty is a working configuration - the API reports
       # transcription as unavailable and everything else runs (T-2.3).
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Same rule for the bucket (T-3.1). Unset leaves the local backend in
+      # place, which is a working configuration and the default.
+      KARUKI_S3_ENDPOINT: ${KARUKI_S3_ENDPOINT:-}
+      KARUKI_S3_BUCKET: ${KARUKI_S3_BUCKET:-}
+      KARUKI_S3_REGION: ${KARUKI_S3_REGION:-}
+      KARUKI_S3_KEY_ID: ${KARUKI_S3_KEY_ID:-}
+      KARUKI_S3_SECRET: ${KARUKI_S3_SECRET:-}
+      KARUKI_SIGNING_SECRET: ${KARUKI_SIGNING_SECRET:-}
     ports:
       - "8000:8000"
     volumes:

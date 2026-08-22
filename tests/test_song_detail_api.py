@@ -1,20 +1,24 @@
 """`GET /songs/{id}` and the stem audio behind it - what the player opens with.
 
-Chapter 6 hands out signed URLs here, which needs an object store and therefore
-D-12. Until that is decided the URLs point back at this API, which is the same
-contract from the player's side: fetch what you were given.
+Since T-3.1 the URLs are *signed and expiring*, which is chapter 6 as written.
+With the local backend they point back at this API and the signature is checked
+here; with the object store they point at B2 and the API is not in the path at
+all. The tests below are about the property both share: the audio is reachable
+through the link that was handed out, and through nothing else.
 """
 
 import shutil
 import subprocess
+import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 
-from apps.api.config import API_PREFIX
+from apps.api.config import API_PREFIX, settings
 from apps.api.deps import get_storage
 from apps.api.main import create_app
 from packages.core.enums import StemKind
@@ -130,16 +134,72 @@ def test_each_stem_url_fetches_that_stem(client: TestClient, tmp_path: Path):
         assert response.content == f"audio for {stem['kind']}".encode()
 
 
-def test_stem_audio_is_cacheable_forever(client: TestClient, tmp_path: Path):
-    """A stem never changes once written, and the player fetches four of them
-    every time a song is opened."""
+def test_a_stem_url_carries_an_expiry_and_a_signature(client: TestClient, tmp_path: Path):
+    """T-3.1's acceptance criterion, read off the link itself."""
+    song_id = a_song(client, tmp_path)
+
+    url = client.get(f"{SONGS}/{song_id}").json()["stems"][0]["url"]
+
+    query = parse_qs(urlparse(url).query)
+    assert query["sig"], url
+    assert int(query["expires"][0]) > time.time()
+
+
+def test_stem_audio_is_not_cached_past_its_link(client: TestClient, tmp_path: Path):
+    """The object never changes, but a response cached past the expiry would be
+    served from the browser by a link that no longer works."""
     song_id = a_song(client, tmp_path)
     stem = client.get(f"{SONGS}/{song_id}").json()["stems"][0]
 
     cache = client.get(stem["url"]).headers["cache-control"]
 
-    assert "immutable" in cache
-    assert "max-age=31536000" in cache
+    assert "private" in cache
+    assert f"max-age={settings.signed_url_ttl}" in cache
+
+
+def test_the_audio_cannot_be_fetched_without_the_signature(client: TestClient, tmp_path: Path):
+    """The point of the whole task: the path alone is not authority."""
+    song_id = a_song(client, tmp_path)
+    url = client.get(f"{SONGS}/{song_id}").json()["stems"][0]["url"]
+
+    assert client.get(urlparse(url).path).status_code == 422
+
+
+def test_a_link_whose_expiry_was_edited_is_refused(client: TestClient, tmp_path: Path):
+    """Extending the deadline in the address bar invalidates the signature it
+    came with, because the deadline is inside what was signed."""
+    song_id = a_song(client, tmp_path)
+    url = client.get(f"{SONGS}/{song_id}").json()["stems"][0]["url"]
+    parts = urlparse(url)
+    query = parse_qs(parts.query)
+    later = int(query["expires"][0]) + 86_400
+
+    response = client.get(f"{parts.path}?expires={later}&sig={query['sig'][0]}")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "link_invalid"
+
+
+def test_an_expired_link_is_refused(client: TestClient, tmp_path: Path, storage: LocalStorage):
+    song_id = a_song(client, tmp_path)
+    stem_key = urlparse(client.get(f"{SONGS}/{song_id}").json()["stems"][0]["url"]).path
+    key = stem_key.split("/files/", 1)[1]
+    expired = storage.signed_url(key, -1)
+
+    response = client.get(expired)
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "link_invalid"
+
+
+def test_a_signed_link_to_an_object_that_is_gone_is_a_410(
+    client: TestClient, storage: LocalStorage
+):
+    """Distinct from a bad link on purpose: one is the operator's problem."""
+    response = client.get(storage.signed_url("songs/nobody/vocals.mp3", 60))
+
+    assert response.status_code == 410
+    assert response.json()["error"]["code"] == "file_missing"
 
 
 def test_a_song_that_is_not_there_is_a_404_with_a_code(client: TestClient):
@@ -147,15 +207,6 @@ def test_a_song_that_is_not_there_is_a_404_with_a_code(client: TestClient):
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "song_not_found"
-
-
-def test_a_stem_that_is_not_there_is_a_404_with_a_code(client: TestClient, tmp_path: Path):
-    song_id = a_song(client, tmp_path)
-
-    response = client.get(f"{SONGS}/{song_id}/stems/vocals-but-wrong")
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "stem_not_found"
 
 
 def test_a_song_with_no_stems_yet_answers_with_an_empty_list(client: TestClient, tmp_path: Path):
@@ -194,4 +245,7 @@ def test_the_endpoints_are_documented(client: TestClient):
     paths = client.get("/openapi.json").json()["paths"]
 
     assert f"{SONGS}/{{song_id}}" in paths
-    assert f"{SONGS}/{{song_id}}/stems/{{kind}}" in paths
+    assert f"{API_PREFIX}/files/{{key}}" in paths
+    assert f"{SONGS}/{{song_id}}/stems/{{kind}}" not in paths, (
+        "the unsigned route is what T-3.1 removes"
+    )

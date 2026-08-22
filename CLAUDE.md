@@ -156,8 +156,9 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-Phase 3 (cloud and multiple users) is next, and it starts with the two provider
-decisions listed at the bottom of this file.
+Phase 3 (cloud and multiple users) is under way. `T-3.1` is written and verified
+against the local backend; the object store half is waiting on the B2 account —
+see the bottom of this file.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -901,5 +902,73 @@ From `T-2.10`:
   A song with an empty newest version opens on "הדביקו את המילים שלכם", which is
   the state this task exists for.
 
-Open provider decisions, both deferred to phase 3 and neither blocking:
-`D-12` storage (needs an alternative to R2) and `D-15`/`D-16` database and auth.
+From `T-3.1`:
+
+- **Reading is through a link that expires, on both backends.** `GET /songs/{id}`
+  now hands out signed URLs, which is what chapter 6 says it does, and
+  `GET /songs/{id}/stems/{kind}` — T-1.12's unsigned stand-in — is **gone**. The
+  path alone is no longer authority; the link is, for `KARUKI_SIGNED_URL_TTL`
+  seconds (1h).
+- **`D-12` is Backblaze B2**, spoken to over the S3 API. R2 was rejected in
+  `T-0.6` for putting its free tier behind a payment method. Nothing in
+  `packages/providers/storage_s3.py` is B2-specific — path-style SigV4 — so
+  Storj is five environment variables away if the account turns out to want a
+  card after all.
+- **No boto3.** botocore is tens of megabytes of an image that has to stay
+  deployable on a free tier, for four verbs. The signing is `hmac` and
+  `hashlib`, the requests are `urllib`, the same call this project already made
+  for the hand-built multipart body in `transcription.py`.
+- **A presigned GET is computed, not requested.** Opening a song hands out four
+  links and costs zero round trips to B2, which is what makes signing on every
+  song open affordable.
+- **The local backend signs the same promise itself** — an HMAC over the key and
+  the expiry, checked in `apps/api/routers/files.py` — so chapter 11's "runs
+  locally" stays true without the local path being the weaker one. The expiry is
+  *inside* the signed message: editing `expires=` in the address bar invalidates
+  the link rather than extending it, and that is asserted on both backends.
+- An unset `KARUKI_SIGNING_SECRET` is a **random secret per process**, not an
+  absent one. Links stop working after a restart, which a player recovers from
+  by re-reading the song; the alternative is a signature anybody can compute.
+- Cache-Control on a signed file is `private, max-age=<ttl>` and no longer
+  `immutable, max-age=31536000`. The object never changes, but a response cached
+  past the expiry would be served by a link that no longer works.
+- Verified live on the **local** backend, API and browser: the four stems came
+  back as `/api/v1/files/...?expires=&sig=`, the player fetched all four through
+  them (`200`, four requests, no console errors) and ran the clock to 0:06 of
+  0:20; the path with no signature is `422`, a signature that does not match is
+  `403 link_invalid`, an edited expiry is `403 link_invalid`, and the old
+  unsigned stem route is `404`.
+- Verified live **against the real bucket** (`karuki-songs-sarah`,
+  `s3.eu-central-003.backblazeb2.com`): `put` 41B in 3.2s, `list`, a presigned
+  GET returning the same bytes in 0.8s, `delete_prefix`, and then a whole song
+  through the pipeline — separation writing four distinct stems to B2 and
+  `GET /songs/{id}` handing out four presigned links that fetch them. **B2
+  accepts the hand-rolled SigV4**, which is the thing no unit test could say.
+  The same three refusals hold there and are stronger than locally: unsigned
+  `401`, edited `X-Amz-Expires` `403`, expired link `401`.
+- **The live run found a bug the fakes did not.** urllib's default `Content-Type`
+  for a request with a body is `application/x-www-form-urlencoded`, and B2 kept
+  it: four stems sat in the bucket declared as form data. An object store serves
+  back whatever it was told at upload time, so this is written into the bucket
+  rather than fixed on the way out. `put` now names the type from the key
+  (`content_type` in `storage.py`, shared with the local backend so a stem is
+  `audio/mpeg` either way), and a test asserts it.
+- **The browser cannot read from B2 yet, and that is `T-3.2`.** With
+  `KARUKI_STORAGE_BACKEND=s3` the player shows "לא הצלחנו לטעון את הערוצים"
+  because the bucket has no CORS rule — the presigned URL is fine, the fetch is
+  cross-origin and B2 sends no `Access-Control-Allow-Origin`. `T-3.2` is the
+  task that adds the rule (it is on its line already, for uploads). Reading
+  needs it too. `local` is still the default backend, and it has no such
+  problem.
+
+`D-12` is **closed: Backblaze B2**, account created 2026-08-22, **no payment
+method asked for at any point** — verified in the account the way `T-0.6`
+insists on, and the opposite of what R2 did. Bucket `karuki-songs-sarah`,
+region `eu-central-003` (Amsterdam, the closest of the four to Israel, and the
+one that matters because after `T-3.2` the audio moves between the browser and
+the bucket without the API in the path). Private, SSE-B2 on, object lock off,
+and lifecycle set to **keep only the last version** — a re-run of separation
+rewrites the same key, and "keep all versions" would have doubled the stored
+bytes of every reprocessed song against a 10GB quota.
+
+`D-15`/`D-16` (database and auth) are still open.
