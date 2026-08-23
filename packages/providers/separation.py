@@ -25,6 +25,7 @@ should know that a GPU exists.
 
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -47,7 +48,16 @@ REMOTE_LINK_TTL = 3600
 class SeparationError(RuntimeError):
     """The separation itself failed. Chapter 7 is explicit that there is no
     automatic retry on a GPU step - a retry costs double credit, so the user
-    decides."""
+    decides.
+
+    It carries `gpu_seconds` because a run that failed still spent them, and a
+    credit count that only adds up the successes is the one that runs out
+    unexpectedly.
+    """
+
+    def __init__(self, *args: object, gpu_seconds: float | None = None) -> None:
+        super().__init__(*args)
+        self.gpu_seconds = gpu_seconds
 
 
 class SeparationUnavailable(SeparationError):
@@ -67,6 +77,9 @@ class Separated:
     stems: dict[str, StoredObject]
     backend: str
     format: str = STEM_FORMAT
+    # The handle on the remote call, for following the work after it has left
+    # this process (T-3.4). None on the local backend, which never left.
+    remote_call_id: str | None = None
     # None on the local backend, which uses no GPU at all. On the remote one
     # this is what chapter 7 calls the only way to know how much credit is left.
     gpu_seconds: float | None = None
@@ -83,12 +96,23 @@ class Separator(Protocol):
 
     name: str
 
-    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self,
+        storage: Storage,
+        source_key: str,
+        targets: dict[str, str],
+        on_started: Callable[[str], None] | None = None,
+    ) -> Separated:
         """Separate the object at `source_key` into the four `targets` keys.
 
         Storage is passed in rather than paths, because where the work happens
         decides how the bytes travel: on this machine they go through the disk,
         on the GPU they go through signed links that this process never opens.
+
+        `on_started` is called with the remote call id as soon as the work has
+        been handed over and *before* it is waited on (T-3.4). That ordering is
+        the whole value of it: a job whose process dies mid-call is exactly the
+        one that needs the handle on the call still running out there.
         """
         ...
 
@@ -101,7 +125,14 @@ class LocalDemucsSeparator:
     model: str = "htdemucs"
     device: str = "cpu"
 
-    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self,
+        storage: Storage,
+        source_key: str,
+        targets: dict[str, str],
+        on_started: Callable[[str], None] | None = None,
+    ) -> Separated:
+        # No remote call to report: `on_started` is for the backend that has one.
         # Imported here, not at module scope: the whole point of keeping them
         # out of the `api` dependency group is that the API image does not carry
         # ~2GB of torch, so this module has to be importable without them.
@@ -166,7 +197,13 @@ class ModalSeparator:
     app: str = MODAL_APP
     function: str = MODAL_FUNCTION
 
-    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self,
+        storage: Storage,
+        source_key: str,
+        targets: dict[str, str],
+        on_started: Callable[[str], None] | None = None,
+    ) -> Separated:
         """Hand the GPU a source link and four upload links, and let it do its
         own reading and writing.
 
@@ -186,13 +223,32 @@ class ModalSeparator:
         started = time.monotonic()
         try:
             remote = modal.Function.from_name(self.app, self.function)
-            result = remote.remote(source_url, stem_urls)
+            # spawn, then wait, rather than `remote()`: spawning hands back a
+            # call id immediately, which is what makes the id recordable before
+            # the work finishes rather than after it. D-25 in miniature - the
+            # platform is the queue, and this is its ticket.
+            call = remote.spawn(source_url, stem_urls)
+        except Exception as exc:
+            raise SeparationError(f"the remote GPU call failed: {exc}") from exc
+
+        call_id = getattr(call, "object_id", None)
+        if on_started is not None and call_id:
+            on_started(call_id)
+
+        try:
+            result = call.get()
         except Exception as exc:
             raise SeparationError(f"the remote GPU call failed: {exc}") from exc
         elapsed = time.monotonic() - started
 
         if result.get("error"):
-            raise SeparationError(f"the remote GPU run failed: {result['error']}")
+            # The seconds are reported even though the run failed: they were
+            # spent, and a credit count that only adds up successes is the one
+            # that runs out without warning.
+            raise SeparationError(
+                f"the remote GPU run failed: {result['error']}",
+                gpu_seconds=float(result.get("timings", {}).get("in_container_s", 0.0)),
+            )
 
         written = result.get("written", {})
         stems = {
@@ -206,6 +262,7 @@ class ModalSeparator:
         return Separated(
             stems=stems,
             backend=self.name,
+            remote_call_id=call_id,
             # Billed for the time the container spent on the work, which is what
             # the remote side reports; the round trip is ours, not the GPU's.
             gpu_seconds=float(timings.get("in_container_s", 0.0)),

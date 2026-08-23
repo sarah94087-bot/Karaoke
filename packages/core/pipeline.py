@@ -34,6 +34,7 @@ from packages.core.transcribe import (
     transcribe,
     vocals_audio,
 )
+from packages.core.usage import gpu_seconds_this_month, usd
 from packages.providers.lyrics_catalogue import LyricsCatalogue
 from packages.providers.separation import (
     SeparationError,
@@ -277,25 +278,46 @@ async def _separate(
     await session.commit()
     announce(bus, job, song, "progress")
 
+    loop = asyncio.get_running_loop()
+
+    def note_remote_call(call_id: str) -> None:
+        """Record the call id from the worker thread, durably, before the wait.
+
+        The separation runs in `to_thread`, so this runs there too and cannot
+        touch the session directly. Handing the write back to the loop is safe
+        precisely because the main flow is parked in that `to_thread` and
+        nothing else is using the session.
+        """
+        asyncio.run_coroutine_threadsafe(_save_call_id(session, job, call_id), loop).result(30)
+
     try:
         # to_thread, not inline: see the module docstring.
-        result = await asyncio.to_thread(separate, storage, separator, song)
+        result = await asyncio.to_thread(separate, storage, separator, song, note_remote_call)
     except SeparationUnavailable as exc:
         # Not the song's fault: this process has no separation backend.
         raise PipelineError("separation_unavailable", str(exc)) from exc
     except SeparationError as exc:
+        # A run that failed still spent what it spent, and those seconds come
+        # off the same monthly credit as the successful ones.
+        await jobs.record_gpu_seconds(session, job, exc.gpu_seconds)
+        await session.commit()
         raise PipelineError("separation_failed", str(exc)) from exc
 
+    await jobs.record_remote_call(session, job, result.remote_call_id)
     await jobs.record_gpu_seconds(session, job, result.gpu_seconds)
+    spent = await gpu_seconds_this_month(session)
     # The one line that says what the run actually cost and where the time
     # went. On the remote backend it is the only place the fetch and upload
     # times exist at all - the GPU reports them and nothing else keeps them
     # until T-3.4 gives them a column.
     log.info(
-        "job %s separated on %s: %.1fs gpu, %s",
+        "job %s separated on %s (call %s): %.1fs gpu, %.0fs this month (~$%.2f), %s",
         job.id,
         result.backend,
+        result.remote_call_id or "local",
         result.gpu_seconds or 0.0,
+        spent,
+        usd(spent),
         ", ".join(f"{name}={value}" for name, value in sorted(result.timings.items())),
     )
 
@@ -321,3 +343,9 @@ async def _separate(
     # Chapter 6 names this event specifically: it must arrive before `ready`,
     # because it is the moment the user is allowed to start singing.
     announce(bus, job, song, "playable")
+
+
+async def _save_call_id(session: AsyncSession, job: Job, call_id: str) -> None:
+    """The coroutine `note_remote_call` hands back to the loop."""
+    await jobs.record_remote_call(session, job, call_id)
+    await session.commit()

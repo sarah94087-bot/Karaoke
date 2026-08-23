@@ -163,9 +163,10 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.3` are done —
-object storage with expiring links, uploads that go straight to the bucket, and
-separation on a rented GPU that reads and writes the bucket itself.
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.4` are done —
+object storage with expiring links, uploads that go straight to the bucket,
+separation on a rented GPU that reads and writes the bucket itself, and every
+job carrying the handle on its remote call and what it spent.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -1057,5 +1058,36 @@ From `T-3.3`:
 - `logging.basicConfig` is set in `apps/api/main.py`. uvicorn configures its own
   loggers and leaves the root at WARNING, so every `log.info` in this project -
   including the line that reports what a GPU run cost - was going nowhere.
+
+From `T-3.4`:
+
+- **`spawn` then wait, rather than one blocking call.** Spawning hands back a
+  call id immediately, and the id is written and committed *before* the work is
+  waited on. A job whose process dies mid-call is exactly the one that needs the
+  handle on the call still running out there; an id recorded when the call
+  returns is one you have only when you no longer need it. D-25 in miniature —
+  the platform is the queue and this is its ticket.
+- The id travels out of the worker thread through a callback, and the write is
+  handed back to the event loop with `run_coroutine_threadsafe`. That is safe
+  for the one reason worth stating: the main flow is parked in that `to_thread`,
+  so nothing else is touching the session.
+- **A failed run records the seconds it burned.** `SeparationError` carries
+  `gpu_seconds` and the pipeline commits them before re-raising. A total that
+  only adds up the successes is the one that runs out without warning — and the
+  failure this was written for, T-3.3's B2 `500`, had already spent 16 seconds
+  when it died.
+- `packages/core/usage.py` sums the calendar month (UTC, because that is how the
+  credit resets) and prices it at the workspace's own T4 rate. Every separation
+  now logs `Ns gpu, Ns this month (~$X)`, so the credit is visible without
+  anyone remembering to look. `T-3.8`'s quota screen is the same query.
+- `GET /jobs/{id}` carries `remote_call_id`, so a job can be traced to the run
+  that did the work without opening the database.
+- **Verified live.** A real GPU run showed the id in the job **while it was
+  still separating** (`fc-01M0PX…` at 12:03:39, the run finished at 12:04:10),
+  `gpu_seconds` 14.21 at the end, and the log line reporting the month. The
+  stored id is a genuine handle: `modal.FunctionCall.from_id(…).get()` fetched
+  that run's result back afterwards. A deliberate failure — a source link the
+  GPU cannot read — came back as `GET the source audio: 401` with no stems and
+  **0.38s billed**, which is the number the pipeline now keeps.
 
 `D-15`/`D-16` (database and auth) are still open.

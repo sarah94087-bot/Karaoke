@@ -11,6 +11,7 @@ unique constraint on (song_id, kind) would refuse anyway.
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import delete, select
@@ -63,14 +64,19 @@ def targets_for(song: Song) -> dict[str, str]:
     return {str(kind): stem_key(song.id, str(kind), STEM_FORMAT) for kind in StemKind}
 
 
-def separate(storage: Storage, separator: Separator, song: Song) -> Separated:
+def separate(
+    storage: Storage,
+    separator: Separator,
+    song: Song,
+    on_started: Callable[[str], None] | None = None,
+) -> Separated:
     """Just the separation. Writes the stems, writes no rows.
 
     Split from `record_stems` so that the job runner can report `separating` and
     `encoding` as the distinct steps chapter 7 lists, instead of showing one long
     stall and inventing a step boundary that does not exist.
     """
-    return separator.separate(storage, source_for(storage, song), targets_for(song))
+    return separator.separate(storage, source_for(storage, song), targets_for(song), on_started)
 
 
 async def record_stems(session: AsyncSession, song: Song, result: Separated) -> list[Stem]:

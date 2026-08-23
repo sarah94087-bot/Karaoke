@@ -43,7 +43,9 @@ USER = uuid.UUID("00000000-0000-0000-0000-000000000001")
 class StubSeparator:
     name = "stub"
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
             stems = {}
             for name in STEM_NAMES:

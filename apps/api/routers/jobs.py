@@ -49,6 +49,12 @@ class JobStatus(BaseModel):
     )
     attempts: int
     gpu_seconds: float | None
+    remote_call_id: str | None = Field(
+        default=None,
+        description="The handle on the remote GPU call (T-3.4). Here so a job can be traced to "
+        "the run that did the work without opening the database - the one thing worth having "
+        "when a paid call goes wrong.",
+    )
 
 
 def as_status(job: Job, song: Song) -> JobStatus:
@@ -62,6 +68,7 @@ def as_status(job: Job, song: Song) -> JobStatus:
         error_code=job.error_code,
         attempts=job.attempts,
         gpu_seconds=float(job.gpu_seconds) if job.gpu_seconds is not None else None,
+        remote_call_id=job.remote_call_id,
     )
 
 

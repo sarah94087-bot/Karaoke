@@ -164,6 +164,17 @@ def test_local_separation_reports_a_failure_rather_than_crashing(tmp_path: Path)
 # --- the remote backend, against a fake -------------------------------------
 
 
+class FakeCall:
+    """Modal's handle on a spawned call: an id now, a result later."""
+
+    def __init__(self, remote: "FakeRemote", object_id: str) -> None:
+        self._remote = remote
+        self.object_id = object_id
+
+    def get(self) -> dict:
+        return self._remote.result()
+
+
 class FakeRemote:
     """Stands in for the deployed Modal function, shaped like its real return."""
 
@@ -172,10 +183,13 @@ class FakeRemote:
         self.error = error
         self.calls: list[tuple[str, dict[str, str]]] = []
 
-    def remote(self, source_url: str, stem_urls: dict[str, str]) -> dict:
+    def spawn(self, source_url: str, stem_urls: dict[str, str]) -> FakeCall:
         self.calls.append((source_url, stem_urls))
+        return FakeCall(self, "fc-12345")
+
+    def result(self) -> dict:
         if self.error is not None:
-            return {"written": {}, "error": self.error, "timings": {"in_container_s": 1.0}}
+            return {"written": {}, "error": self.error, "timings": {"in_container_s": 9.0}}
         return {
             "cold_start": False,
             "written": self.written,
@@ -267,8 +281,41 @@ def test_a_remote_run_that_reports_an_error_is_a_separation_error(
     automatic retry of a step that costs credit."""
     install(monkeypatch, FakeRemote(error="RuntimeError: ffmpeg failed for bass"))
 
-    with pytest.raises(SeparationError, match="ffmpeg failed"):
+    with pytest.raises(SeparationError, match="ffmpeg failed") as caught:
         ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+    assert caught.value.gpu_seconds == 9.0, "a failed run still spent the credit"
+
+
+def test_the_call_id_is_reported_before_the_work_is_waited_on(
+    cloud: LocalStorage, fake_modal: FakeRemote
+):
+    """T-3.4. A job whose process dies mid-call is precisely the one that needs
+    the id, so an id handed over only at the end is one you have exactly when
+    you do not need it."""
+    seen: list[str] = []
+
+    result = ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS, seen.append)
+
+    assert seen == ["fc-12345"]
+    assert result.remote_call_id == "fc-12345"
+
+
+def test_the_local_backend_reports_no_call_id(tmp_path: Path):
+    """There is nothing to follow: the work never left this process."""
+    storage = LocalStorage(tmp_path / "storage")
+    seen: list[str] = []
+
+    class Nothing(LocalDemucsSeparator):
+        def separate(self, storage, source_key, targets, on_started=None):  # type: ignore[override]
+            assert on_started is not None
+            return Separated(
+                stems={name: StoredObject(key=targets[name], bytes=1) for name in STEM_NAMES},
+                backend=self.name,
+            )
+
+    assert Nothing().separate(storage, SOURCE_KEY, TARGETS, seen.append).remote_call_id is None
+    assert seen == []
 
 
 def test_a_remote_run_missing_a_stem_is_refused(

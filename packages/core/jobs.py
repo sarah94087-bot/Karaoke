@@ -173,6 +173,20 @@ async def retry(session: AsyncSession, job: Job) -> Job:
     return job
 
 
+async def record_remote_call(session: AsyncSession, job: Job, call_id: str | None) -> Job:
+    """The handle on the work once it has left this process (chapter 5).
+
+    Written the moment the call is handed over, before it is waited on: a job
+    whose process dies mid-call is exactly the one that needs the id, and an id
+    recorded after the call returns is an id you have only when you do not need
+    it.
+    """
+    if call_id:
+        job.remote_call_id = call_id
+        await session.flush()
+    return job
+
+
 async def record_gpu_seconds(session: AsyncSession, job: Job, seconds: float | None) -> Job:
     """Chapter 7 calls this the only way to know how much credit is left."""
     if seconds is not None:

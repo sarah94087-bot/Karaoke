@@ -40,7 +40,9 @@ class StubSeparator:
     def __init__(self, gpu_seconds: float | None = None) -> None:
         self.gpu_seconds = gpu_seconds
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
             stems = {}
             for name in STEM_NAMES:
@@ -56,7 +58,9 @@ class FailingSeparator:
     def __init__(self, error: Exception) -> None:
         self.error = error
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         raise self.error
 
 
@@ -277,6 +281,64 @@ async def test_a_retried_job_can_succeed(sessions, storage, tmp_path):
     assert job.attempts == 2
 
 
+async def test_the_remote_call_id_is_durable_before_the_work_finishes(
+    database_url, sessions, storage, tmp_path
+):
+    """T-3.4, and the reason the id is reported through a callback rather than
+    in the result.
+
+    A job whose process dies mid-call is exactly the one that needs the handle
+    on the call still running out there. So the row is read over a separate
+    connection from inside the separation, after the id has been announced and
+    while the work is still notionally going - only committed data is visible,
+    which is what a restarted process would see.
+    """
+    import psycopg
+
+    observed: list[str | None] = []
+
+    class Spawning(StubSeparator):
+        def __init__(self, job_id: uuid.UUID) -> None:
+            super().__init__()
+            self.job_id = job_id
+
+        def separate(self, storage, source_key: str, targets: dict[str, str], on_started=None):
+            assert on_started is not None
+            on_started("fc-abc123")
+            with psycopg.connect(database_url, autocommit=True) as conn:
+                observed.append(
+                    conn.execute(
+                        "select remote_call_id from jobs where id = %s", [str(self.job_id)]
+                    ).fetchone()[0]
+                )
+            return super().separate(storage, source_key, targets)
+
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+
+        await run_job(session, storage, Spawning(job.id), job, song)
+
+    assert observed == ["fc-abc123"], "the call id was not durable while the call was running"
+    async with sessions() as session:
+        assert (await session.get(Job, job.id)).remote_call_id == "fc-abc123"
+
+
+async def test_a_failed_gpu_run_still_records_what_it_spent(sessions, storage, tmp_path):
+    """The seconds came off the same $1 credit as a successful run. Counting
+    only the successes is how a credit runs out without warning."""
+    burned = SeparationError("the GPU gave up", gpu_seconds=16.0)
+
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+
+        await run_job(session, storage, FailingSeparator(burned), job, song)
+
+    async with sessions() as session:
+        failed = await session.get(Job, job.id)
+        assert failed.state == JobState.FAILED
+        assert float(failed.gpu_seconds) == 16.0
+
+
 async def test_progress_is_committed_as_it_happens(database_url, sessions, storage, tmp_path):
     """ "Survives a restart" is only true if each step is durable when it is
     shown, not when the job ends.
@@ -294,7 +356,9 @@ async def test_progress_is_committed_as_it_happens(database_url, sessions, stora
             super().__init__()
             self.job_id = job_id
 
-        def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+        def separate(
+            self, storage, source_key: str, targets: dict[str, str], on_started=None
+        ) -> Separated:
             with psycopg.connect(database_url, autocommit=True) as conn:
                 observed.append(
                     conn.execute(

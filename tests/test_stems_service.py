@@ -31,7 +31,9 @@ class StubSeparator:
         self.gpu_seconds = gpu_seconds
         self.calls: list[str] = []
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         self.calls.append(source_key)
         with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
             stems = {}
@@ -50,7 +52,9 @@ class StubSeparator:
 class ExplodingSeparator:
     name = "exploding"
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         raise SeparationError("the GPU went away")
 
 

@@ -35,7 +35,9 @@ class StubSeparator:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         if self.error is not None:
             raise self.error
         with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:

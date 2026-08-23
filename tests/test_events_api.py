@@ -42,7 +42,9 @@ class SlowSeparator:
         self.error = error
         self.started = threading.Event()
 
-    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+    def separate(
+        self, storage, source_key: str, targets: dict[str, str], on_started=None
+    ) -> Separated:
         self.started.set()
         time.sleep(self.delay)
         if self.error is not None:
