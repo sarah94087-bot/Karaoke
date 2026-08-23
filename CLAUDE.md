@@ -169,6 +169,20 @@ separation on a rented GPU that reads and writes the bucket itself, every job
 carrying the handle on its remote call and what it spent, and staged readiness
 measured end to end in the cloud configuration.
 
+**Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
+dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
+it deletes every volume, including `db_data`. The fix is to quit and remove the
+leftover socket files, which live in more than one place - it crashed twice on
+2026-08-23, first on `%LOCALAPPDATA%\Docker\run\sailor-ingest.sock` and then on
+`%LOCALAPPDATA%\docker-secrets-engine\engine.sock`:
+
+```
+Get-ChildItem "$env:LOCALAPPDATA\Docker", "$env:LOCALAPPDATA\docker-secrets-engine" -Recurse -Filter *.sock -ErrorAction SilentlyContinue | Remove-Item -Force
+```
+
+A Windows restart clears them all at once if it keeps finding new ones. The
+containers and the volumes survive this untouched; only the daemon is broken.
+
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
 recognized", the session's PATH is stale — reopen the terminal, or in
