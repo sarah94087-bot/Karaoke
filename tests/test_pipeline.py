@@ -7,6 +7,7 @@ under test here is that the steps are reported in the order chapter 7 gives, tha
 row rather than escaping as a traceback.
 """
 
+import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -39,13 +40,13 @@ class StubSeparator:
     def __init__(self, gpu_seconds: float | None = None) -> None:
         self.gpu_seconds = gpu_seconds
 
-    def separate(self, source: Path, destination: Path) -> Separated:
-        destination.mkdir(parents=True, exist_ok=True)
-        stems = {}
-        for name in STEM_NAMES:
-            path = destination / f"{name}.mp3"
-            path.write_bytes(f"{name}".encode())
-            stems[name] = path
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+        with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
+            stems = {}
+            for name in STEM_NAMES:
+                path = Path(tmp) / f"{name}.mp3"
+                path.write_bytes(f"{name}".encode())
+                stems[name] = storage.put(targets[name], path)
         return Separated(stems=stems, backend=self.name, gpu_seconds=self.gpu_seconds)
 
 
@@ -55,7 +56,7 @@ class FailingSeparator:
     def __init__(self, error: Exception) -> None:
         self.error = error
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
         raise self.error
 
 
@@ -293,14 +294,14 @@ async def test_progress_is_committed_as_it_happens(database_url, sessions, stora
             super().__init__()
             self.job_id = job_id
 
-        def separate(self, source: Path, destination: Path) -> Separated:
+        def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
             with psycopg.connect(database_url, autocommit=True) as conn:
                 observed.append(
                     conn.execute(
                         "select current_step, progress from jobs where id = %s", [str(self.job_id)]
                     ).fetchone()
                 )
-            return super().separate(source, destination)
+            return super().separate(storage, source_key, targets)
 
     async with sessions() as session:
         song, job = await ingested(session, storage, tmp_path)

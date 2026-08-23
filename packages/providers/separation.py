@@ -12,10 +12,18 @@ measured at 6.2s for a song that takes 144s locally. It costs real money from a
 $1/month credit, so it is never the default: it is chosen explicitly, by
 configuration, and D-07's budget is the reason this file counts gpu_seconds.
 
+**Both backends are given storage and keys, not files** (T-3.3). The local one
+reads and writes through the disk it already has; the remote one is handed
+signed URLs and does its own reading and writing, so a 40MB source and 15MB of
+stems never pass through the API at all. That is the same authorisation the
+browser upload uses - a link, for one key, for an hour - and it means no
+credential ever leaves this process.
+
 Which one is in use is a setting, not an import. Nothing above this module
 should know that a GPU exists.
 """
 
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,12 +31,17 @@ from typing import Protocol
 
 from packages.audio.encode import STEM_BITRATE, STEM_FORMAT, encode_all
 from packages.core.enums import StemKind
+from packages.providers.storage import Storage, StoredObject
 
 # The order Demucs returns, and the order the mixer shows them in.
 STEM_NAMES: tuple[str, ...] = tuple(str(kind) for kind in StemKind)
 
 MODAL_APP = "karuki-separation"
-MODAL_FUNCTION = "separate"
+MODAL_FUNCTION = "separate_to_storage"
+
+# Long enough to outlast a cold start plus the longest song the quota allows,
+# and no longer. The GPU holds these links for the length of one call.
+REMOTE_LINK_TTL = 3600
 
 
 class SeparationError(RuntimeError):
@@ -49,9 +62,9 @@ class SeparationUnavailable(SeparationError):
 
 @dataclass(frozen=True)
 class Separated:
-    """Four stems on disk, plus what the run cost."""
+    """Four stems **in storage**, plus what the run cost."""
 
-    stems: dict[str, Path]
+    stems: dict[str, StoredObject]
     backend: str
     format: str = STEM_FORMAT
     # None on the local backend, which uses no GPU at all. On the remote one
@@ -70,8 +83,13 @@ class Separator(Protocol):
 
     name: str
 
-    def separate(self, source: Path, destination: Path) -> Separated:
-        """Separate `source` into four stems written under `destination`."""
+    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
+        """Separate the object at `source_key` into the four `targets` keys.
+
+        Storage is passed in rather than paths, because where the work happens
+        decides how the bytes travel: on this machine they go through the disk,
+        on the GPU they go through signed links that this process never opens.
+        """
         ...
 
 
@@ -83,7 +101,7 @@ class LocalDemucsSeparator:
     model: str = "htdemucs"
     device: str = "cpu"
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
         # Imported here, not at module scope: the whole point of keeping them
         # out of the `api` dependency group is that the API image does not carry
         # ~2GB of torch, so this module has to be importable without them.
@@ -96,7 +114,7 @@ class LocalDemucsSeparator:
                 f"(pip install -e .[separation]); {exc}"
             ) from exc
 
-        destination.mkdir(parents=True, exist_ok=True)
+        source = storage.local_path(source_key)
         started = time.monotonic()
         try:
             separator = DemucsSeparator(model=self.model, device=self.device)
@@ -106,19 +124,25 @@ class LocalDemucsSeparator:
             raise SeparationError(f"demucs failed: {exc}") from exc
         separated = time.monotonic()
 
-        raw: dict[str, tuple[Path, Path]] = {}
-        for name, tensor in stems.items():
-            wav = destination / f"{name}.wav"
-            soundfile.write(str(wav), tensor.cpu().numpy().T, separator.samplerate)
-            raw[name] = (wav, destination / f"{name}.{STEM_FORMAT}")
+        with tempfile.TemporaryDirectory(prefix="karuki-stems-") as tmp:
+            work = Path(tmp)
+            raw: dict[str, tuple[Path, Path]] = {}
+            for name, tensor in stems.items():
+                wav = work / f"{name}.wav"
+                soundfile.write(str(wav), tensor.cpu().numpy().T, separator.samplerate)
+                raw[name] = (wav, work / f"{name}.{STEM_FORMAT}")
 
-        encoded = encode_all(raw, STEM_BITRATE)
-        for wav, _ in raw.values():
-            wav.unlink(missing_ok=True)
+            encoded = encode_all(raw, STEM_BITRATE)
+            for wav, _ in raw.values():
+                wav.unlink(missing_ok=True)
+            # The stems go into storage here rather than being handed back as
+            # files. It is what makes the two backends the same shape, and the
+            # caller no longer needs a temporary directory of its own.
+            stored = {name: storage.put(targets[name], path) for name, path in encoded.items()}
         finished = time.monotonic()
 
         return Separated(
-            stems=encoded,
+            stems=stored,
             backend=self.name,
             gpu_seconds=None,
             timings={
@@ -142,23 +166,40 @@ class ModalSeparator:
     app: str = MODAL_APP
     function: str = MODAL_FUNCTION
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage: Storage, source_key: str, targets: dict[str, str]) -> Separated:
+        """Hand the GPU a source link and four upload links, and let it do its
+        own reading and writing.
+
+        Phase 0 sent the audio inside the call and got 15MB of stems back the
+        same way, which made this process the middle of every transfer. Signed
+        links take it out of the path: the same authorisation the browser
+        upload uses, for one key, for an hour, and no credential leaves here.
+        """
         import modal
 
-        destination.mkdir(parents=True, exist_ok=True)
+        source_url = storage.signed_url(source_key, REMOTE_LINK_TTL)
+        self._must_be_reachable(source_url)
+        stem_urls = {
+            name: storage.signed_upload_url(key, REMOTE_LINK_TTL) for name, key in targets.items()
+        }
+
         started = time.monotonic()
         try:
             remote = modal.Function.from_name(self.app, self.function)
-            result = remote.remote(source.name, source.read_bytes())
+            result = remote.remote(source_url, stem_urls)
         except Exception as exc:
             raise SeparationError(f"the remote GPU call failed: {exc}") from exc
         elapsed = time.monotonic() - started
 
-        stems: dict[str, Path] = {}
-        for name, blob in result["stems"].items():
-            path = destination / f"{name}.{STEM_FORMAT}"
-            path.write_bytes(blob)
-            stems[name] = path
+        if result.get("error"):
+            raise SeparationError(f"the remote GPU run failed: {result['error']}")
+
+        written = result.get("written", {})
+        stems = {
+            name: StoredObject(key=key, bytes=int(written[name]))
+            for name, key in targets.items()
+            if name in written
+        }
 
         timings = dict(result.get("timings", {}))
         timings["total_s"] = round(elapsed, 2)
@@ -170,6 +211,21 @@ class ModalSeparator:
             gpu_seconds=float(timings.get("in_container_s", 0.0)),
             timings=timings,
         )
+
+    @staticmethod
+    def _must_be_reachable(url: str) -> None:
+        """A link only this machine can open is no use to a rented container.
+
+        The local storage backend hands out root-relative links unless
+        KARUKI_PUBLIC_BASE_URL is set, and root-relative means "this API",
+        which from somebody else network is nothing at all. Better said here
+        than as a timeout twenty seconds into a call that costs money.
+        """
+        if not url.startswith("http"):
+            raise SeparationUnavailable(
+                "the modal backend needs storage that hands out absolute links: "
+                "use KARUKI_STORAGE_BACKEND=s3, or set KARUKI_PUBLIC_BASE_URL"
+            )
 
 
 BACKENDS: dict[str, type[Separator]] = {

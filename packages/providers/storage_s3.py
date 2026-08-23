@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import logging
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -81,6 +82,21 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _sha256_file(path: Path) -> tuple[str, int]:
+    """The payload hash and the size, without holding the file in memory.
+
+    SigV4 signs a hash of the body, which is why an upload cannot simply be
+    streamed blind - but it can be read twice: once to hash, once to send.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
 def _hmac(key: bytes, message: str) -> bytes:
     return hmac.new(key, message.encode(), hashlib.sha256).digest()
 
@@ -106,7 +122,16 @@ class S3Storage:
 
     config: S3Config
     opener: Callable[..., Any] = urllib.request.urlopen
-    timeout: float = 30.0
+    # Generous on purpose. A four-minute song is a 47MB normalised wav, and at
+    # the throughput measured to eu-central-003 the old 30s default timed out
+    # part-way through the first real song - which surfaced as a 500 from our
+    # own API on an upload that was working exactly as designed, only slowly.
+    timeout: float = 300.0
+    # Storage services are allowed transient failures, and the S3 API documents
+    # these as retryable. B2 answered one live PUT with a 500. Retrying a
+    # transfer is not the automatic retry chapter 7 forbids - that one is a
+    # second GPU call, and it costs credit; this costs a few seconds.
+    attempts: int = 4
     _cache: dict[str, Path] = field(default_factory=dict, repr=False)
     _cache_dir: Path | None = field(default=None, repr=False)
 
@@ -179,12 +204,13 @@ class S3Storage:
         body: bytes,
         *,
         now: dt.datetime | None = None,
+        payload_hash: str | None = None,
     ) -> dict[str, str]:
         moment = now or dt.datetime.now(dt.UTC)
         stamp = moment.strftime("%Y%m%dT%H%M%SZ")
         date = stamp[:8]
         scope = f"{date}/{self.config.region}/{SERVICE}/aws4_request"
-        payload_hash = _sha256(body)
+        payload_hash = payload_hash or _sha256(body)
         headers = {
             "host": self._host(),
             "x-amz-content-sha256": payload_hash,
@@ -209,6 +235,8 @@ class S3Storage:
 
     # -- requests ------------------------------------------------------------
 
+    RETRYABLE = frozenset({408, 429, 500, 502, 503, 504})
+
     def _call(
         self,
         method: str,
@@ -217,45 +245,76 @@ class S3Storage:
         params: dict[str, str] | None = None,
         body: bytes = b"",
         headers: dict[str, str] | None = None,
+        source: Path | None = None,
     ) -> bytes:
+        """One request, retried on the failures a storage service is allowed to have.
+
+        `source` uploads a file without reading it into memory: the hash is
+        computed in chunks and the open handle is the request body. The API runs
+        on a free tier with a few hundred MB of RAM, and a 47MB `bytes` per
+        upload is the kind of thing that works until two songs arrive at once.
+        """
         trust_system_certificates()
         params = params or {}
         uri = self._uri(key)
         url = f"{self.config.endpoint}{uri}"
         if params:
             url = f"{url}?{_canonical_query(params)}"
-        request = urllib.request.Request(
-            url,
-            data=body or None,
-            method=method,
-            headers={**self._signed_headers(method, uri, params, body), **(headers or {})},
-        )
         what = key or self.config.bucket
-        try:
-            with self.opener(request, timeout=self.timeout) as response:
-                return bytes(response.read())
-        except urllib.error.HTTPError as exc:
-            detail = exc.read()[:400].decode("utf-8", "replace")
-            raise StorageError(f"{method} {what} failed: {exc.code} {detail}") from exc
-        except OSError as exc:
-            raise StorageError(f"{method} {what} failed: {exc}") from exc
+
+        if source is not None:
+            payload_hash, size = _sha256_file(source)
+        else:
+            payload_hash, size = _sha256(body), len(body)
+
+        last: Exception | None = None
+        for attempt in range(self.attempts):
+            signed = self._signed_headers(method, uri, params, b"", payload_hash=payload_hash)
+            extra = dict(headers or {})
+            if source is not None:
+                extra["Content-Length"] = str(size)
+            handle = source.open("rb") if source is not None else None
+            request = urllib.request.Request(
+                url,
+                data=handle if handle is not None else (body or None),
+                method=method,
+                headers={**signed, **extra},
+            )
+            try:
+                with self.opener(request, timeout=self.timeout) as response:
+                    return bytes(response.read())
+            except urllib.error.HTTPError as exc:
+                detail = exc.read()[:400].decode("utf-8", "replace")
+                last = StorageError(f"{method} {what} failed: {exc.code} {detail}")
+                if exc.code not in self.RETRYABLE:
+                    raise last from exc
+            except OSError as exc:
+                last = StorageError(f"{method} {what} failed: {exc}")
+            finally:
+                if handle is not None:
+                    handle.close()
+            if attempt < self.attempts - 1:
+                log.warning("%s %s failed, retrying: %s", method, what, last)
+                time.sleep(2**attempt)
+        raise last if last is not None else StorageError(f"{method} {what} failed")
 
     # -- the protocol --------------------------------------------------------
 
     def put(self, key: str, source: Path) -> StoredObject:
         checked = validate_key(key)
-        data = Path(source).read_bytes()
-        # Named explicitly, because urllib's default for a request with a body
-        # is `application/x-www-form-urlencoded` - and a live run showed B2
-        # storing exactly that on four stems. It is not a header the signature
-        # covers, so nothing else would have complained.
-        self._call("PUT", checked, body=data, headers={"Content-Type": content_type(checked)})
+        source = Path(source)
+        size = source.stat().st_size
+        # The content type is named explicitly, because urllib's default for a
+        # request with a body is `application/x-www-form-urlencoded` - and a
+        # live run showed B2 storing exactly that on four stems. It is not a
+        # header the signature covers, so nothing else would have complained.
+        self._call("PUT", checked, headers={"Content-Type": content_type(checked)}, source=source)
         stale = self._cache.pop(checked, None)
         if stale is not None:
             # The key was replaced - re-running separation does exactly this -
             # so the copy this process downloaded earlier is now the wrong audio.
             stale.unlink(missing_ok=True)
-        return StoredObject(key=checked, bytes=len(data))
+        return StoredObject(key=checked, bytes=size)
 
     def list_keys(self, prefix: str) -> list[str]:
         keys: list[str] = []

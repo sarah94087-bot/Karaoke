@@ -1,6 +1,11 @@
-"""T-0.3 — Demucs separation on a serverless GPU.
+"""Demucs separation on a serverless GPU.
 
-Covers T-0.3.1 (remote function responds) through T-0.3.4 (five measured runs).
+Built in T-0.3 (T-0.3.1, the remote function responds, through T-0.3.4, five
+measured runs) and put into production shape in T-3.3, which added
+`separate_to_storage`: the function is given signed links and does its own
+reading and writing, so a 40MB source and 15MB of stems never travel through
+the API. `separate` is kept beside it because phase 0 measured on it and the
+numbers in docs/phase0 refer to it.
 
 Cost discipline: the free workspace has $1/month, not the $30 that comparison
 sites advertise -- that tier needs a payment method. At ~$0.002 per song a T4
@@ -19,7 +24,7 @@ import modal
 
 # Bumped by hand when the deploy needs forcing: `modal deploy` compares a hash of
 # the mount and will report "no changes detected" even after the file is edited.
-BUILD = 5
+BUILD = 7
 
 app = modal.App("karuki-separation")
 
@@ -230,3 +235,158 @@ def separate(filename: str, data: bytes) -> dict:
             "in_container_s": round(time.time() - t_entry, 2),
         },
     }
+
+
+@app.function(image=image, gpu="T4", volumes={"/cache": cache}, timeout=900)
+def separate_to_storage(source_url: str, stem_urls: dict) -> dict:
+    """T-3.3 — read from storage, separate, write the stems back to storage.
+
+    The API never sees the audio. What it sends is a signed link to the source
+    and one signed upload link per stem; what comes back is sizes and timings.
+    That keeps a free instance out of the middle of 55MB of transfer per song,
+    and it means no storage credential is ever on this machine.
+
+    Failures come back as a value rather than an exception. A raised exception
+    on Modal is a retry-shaped event, and chapter 7 is explicit that a GPU step
+    is never retried automatically - a retry costs double credit and the user
+    decides.
+    """
+    global _FRESH_CONTAINER
+    cold = _FRESH_CONTAINER
+    _FRESH_CONTAINER = False
+
+    import pathlib
+    import subprocess
+    import urllib.error
+    import urllib.request
+
+    t_entry = time.time()
+    work = pathlib.Path("/tmp/work")
+    work.mkdir(parents=True, exist_ok=True)
+
+    def http(
+        method: str,
+        url: str,
+        what: str,
+        body: bytes | None = None,
+        content_type: str | None = None,
+        attempts: int = 4,
+    ) -> bytes:
+        """One transfer, retried on the failures a storage service is allowed to have.
+
+        A live run had B2 answer 500 to one PUT and the whole GPU run died with
+        it - about 16 seconds of paid time thrown away because of a transient
+        error the S3 API documents as retryable. Retrying the transfer inside
+        the run is **not** the automatic retry chapter 7 forbids: that one is a
+        second GPU call, which costs double credit. This one costs a few
+        seconds and saves the credit already spent.
+
+        The message names which transfer failed, because "HTTP Error 500" on
+        its own does not say whether the source could not be read or a stem
+        could not be written.
+        """
+        retryable = {408, 429, 500, 502, 503, 504}
+        for attempt in range(attempts):
+            headers = {"Content-Type": content_type} if content_type else {}
+            request = urllib.request.Request(url, data=body, method=method, headers=headers)
+            try:
+                with urllib.request.urlopen(request, timeout=300) as response:
+                    return response.read()
+            except urllib.error.HTTPError as exc:
+                last = f"{exc.code} {exc.reason}"
+                if exc.code not in retryable or attempt == attempts - 1:
+                    raise RuntimeError(f"{method} {what}: {last}") from exc
+            except OSError as exc:
+                last = str(exc)
+                if attempt == attempts - 1:
+                    raise RuntimeError(f"{method} {what}: {last}") from exc
+            time.sleep(2**attempt)
+        raise RuntimeError(f"{method} {what}: {last}")
+
+    try:
+        t_fetch = time.time()
+        src = work / "source.wav"
+        src.write_bytes(http("GET", source_url, "the source audio"))
+        fetch_time = time.time() - t_fetch
+
+        t_model = time.time()
+        import torch  # noqa: F401  (import cost belongs to model-load time)
+        from demucs.api import Separator
+
+        separator = Separator(model="htdemucs", device="cuda")
+        model_ready = time.time() - t_model
+
+        t_sep = time.time()
+        _, stems = separator.separate_audio_file(src)
+        sep_time = time.time() - t_sep
+
+        # Encoding was measured at 15.5s against 6.2s for the separation itself,
+        # so the four stems are encoded concurrently rather than one at a time.
+        t_enc = time.time()
+        import soundfile as sf
+
+        procs = {}
+        for name, tensor in stems.items():
+            if name not in stem_urls:
+                continue
+            raw = work / f"{name}.wav"
+            sf.write(str(raw), tensor.cpu().numpy().T, separator.samplerate)
+            mp3 = work / f"{name}.mp3"
+            procs[name] = (
+                mp3,
+                subprocess.Popen(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(raw),
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "128k",
+                        str(mp3),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ),
+            )
+        encoded = {}
+        for name, (mp3, proc) in procs.items():
+            if proc.wait() != 0:
+                raise RuntimeError(f"ffmpeg failed for {name}")
+            encoded[name] = mp3.read_bytes()
+        encode_time = time.time() - t_enc
+
+        t_put = time.time()
+        written = {}
+        for name, blob in encoded.items():
+            http("PUT", stem_urls[name], f"the {name} stem", blob, "audio/mpeg")
+            written[name] = len(blob)
+        put_time = time.time() - t_put
+
+        missing = set(stem_urls) - set(written)
+        if missing:
+            raise RuntimeError(f"no stem produced for {', '.join(sorted(missing))}")
+
+        cache.commit()  # persist the downloaded weights for the next cold start
+
+        return {
+            "cold_start": cold,
+            "written": written,
+            "timings": {
+                "boot_to_call_s": round(t_entry - _BOOT, 2),
+                "fetch_s": round(fetch_time, 2),
+                "model_load_s": round(model_ready, 2),
+                "separation_s": round(sep_time, 2),
+                "encode_s": round(encode_time, 2),
+                "upload_s": round(put_time, 2),
+                "in_container_s": round(time.time() - t_entry, 2),
+            },
+        }
+    except Exception as exc:
+        return {
+            "cold_start": cold,
+            "written": {},
+            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            "timings": {"in_container_s": round(time.time() - t_entry, 2)},
+        }

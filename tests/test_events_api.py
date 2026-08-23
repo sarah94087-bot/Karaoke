@@ -9,6 +9,7 @@ whether a browser could read this.
 import json
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -41,17 +42,17 @@ class SlowSeparator:
         self.error = error
         self.started = threading.Event()
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
         self.started.set()
         time.sleep(self.delay)
         if self.error is not None:
             raise self.error
-        destination.mkdir(parents=True, exist_ok=True)
-        stems = {}
-        for name in STEM_NAMES:
-            path = destination / f"{name}.mp3"
-            path.write_bytes(name.encode())
-            stems[name] = path
+        with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
+            stems = {}
+            for name in STEM_NAMES:
+                path = Path(tmp) / f"{name}.mp3"
+                path.write_bytes(name.encode())
+                stems[name] = storage.put(targets[name], path)
         return Separated(stems=stems, backend=self.name)
 
 

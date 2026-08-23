@@ -50,14 +50,22 @@ class Response(io.BytesIO):
 
 
 class FakeOpener:
-    """Records every request and answers with whatever it was queued."""
+    """Records every request and answers with whatever it was queued.
+
+    The body is read here rather than kept: an upload streams from an open file
+    that is closed the moment the call returns, so a test that reads it later is
+    reading a closed handle.
+    """
 
     def __init__(self, *bodies: bytes) -> None:
         self.requests: list[object] = []
+        self.sent: list[bytes] = []
         self.bodies = list(bodies) or [b""]
 
     def __call__(self, request: object, timeout: float = 0) -> Response:
         self.requests.append(request)
+        data = getattr(request, "data", None)
+        self.sent.append(data.read() if hasattr(data, "read") else (data or b""))
         body = self.bodies.pop(0) if len(self.bodies) > 1 else self.bodies[0]
         return Response(body)
 
@@ -148,7 +156,9 @@ def test_put_sends_the_bytes_and_hashes_them(tmp_path: Path):
     assert request.full_url == (
         "https://s3.us-west-004.backblazeb2.com/karuki-songs/songs/a/vocals.mp3"
     )
-    assert request.data == b"audio"
+    # The body is the open file, not 47MB of `bytes` on a free instance.
+    assert opener.sent[-1] == b"audio"
+    assert request.headers["Content-length"] == "5"
     assert stored.bytes == 5
     # sha256 of b"audio": the payload hash is part of what is signed, so an
     # unsigned-payload shortcut here would be a silently weaker write.
@@ -180,6 +190,47 @@ def test_an_object_that_is_not_audio_is_handed_over_as_bytes(tmp_path: Path):
     storage.put("songs/a/words.json", source)
 
     assert opener.last.headers["Content-type"] == "application/octet-stream"
+
+
+def test_a_transient_failure_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """B2 answered one live PUT with a 500, which killed a GPU run that had
+    already been paid for. The S3 API documents these as retryable, and a
+    retried transfer is not the retry chapter 7 forbids - that one is a second
+    GPU call."""
+    monkeypatch.setattr("packages.providers.storage_s3.time.sleep", lambda _: None)
+    source = tmp_path / "vocals.mp3"
+    source.write_bytes(b"audio")
+    attempts = []
+
+    def flaky(request: object, timeout: float = 0) -> Response:
+        attempts.append(request.data.read())
+        if len(attempts) == 1:
+            raise urllib.error.HTTPError(
+                "https://example", 500, "Internal Server Error", {}, io.BytesIO(b"<Error/>")
+            )
+        return Response(b"")
+
+    S3Storage(CONFIG, opener=flaky).put("songs/a/vocals.mp3", source)
+
+    assert len(attempts) == 2
+    assert attempts[1] == b"audio", "the retry has to re-open the file"
+
+
+def test_a_refusal_is_not_retried(tmp_path: Path):
+    """A 403 is a wrong key, and asking again four times only makes the log
+    worse."""
+    attempts = []
+
+    def refused(request: object, timeout: float = 0) -> Response:
+        attempts.append(request)
+        raise urllib.error.HTTPError(
+            "https://example", 403, "Forbidden", {}, io.BytesIO(b"<Error/>")
+        )
+
+    with pytest.raises(StorageError):
+        S3Storage(CONFIG, opener=refused).local_path("songs/a/vocals.mp3")
+
+    assert len(attempts) == 1
 
 
 def test_local_path_downloads_once_and_keeps_the_file(tmp_path: Path):

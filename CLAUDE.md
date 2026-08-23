@@ -163,8 +163,9 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` and `T-3.2` are done —
-object storage with expiring links, and uploads that go straight to the bucket.
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.3` are done —
+object storage with expiring links, uploads that go straight to the bucket, and
+separation on a rented GPU that reads and writes the bucket itself.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -1020,5 +1021,41 @@ From `T-3.2`:
   Playback itself was not re-observed on this run: the browser pane was not
   displayed, so the audio context never got the user gesture it needs. The same
   code path played on the local backend in `T-3.1`.
+
+From `T-3.3`:
+
+- **The separator is given storage and keys, not files.** Both backends end with
+  the four stems *in storage*: the local one through the disk it already has,
+  the remote one through signed links it opens itself. Nothing above
+  `packages/core/stems.py` knows which happened, which is the rule that file has
+  had since T-1.6.
+- **The GPU is handed one link to read and four to write, and nothing else.** No
+  audio in the call, no storage credential on the rented container - the same
+  authorisation the browser upload uses, for one key, for an hour. Phase 0 sent
+  23MB in the call and got 15MB back through the API; that path is gone.
+- A root-relative link is refused **before** the call. Local storage hands those
+  out unless `KARUKI_PUBLIC_BASE_URL` is set, and "this API" means nothing from
+  a rented container. Better a clear message than a timeout inside a paid call.
+- **Measured on a real 4:30 song, on the GPU, end to end**: `fetch 2.95s →
+  model 4.54 → separate 14.72 → encode 10.4 → upload 9.97`, **42.6s billed**,
+  49.0s round trip, and the player then opened it from B2. The two transfers are
+  now inside the billed window - 12.9s of the 42.6 - which is the price of
+  keeping them out of the API. `docs/phase0/quotas.md` carries the new
+  utilisation figure.
+- **Two failures on the first real runs, both fixed, both worth keeping in
+  mind.**
+  - B2 answered one `PUT` with a **500** and the whole paid run died with it.
+    The S3 API documents that as retryable, so both sides now retry a transfer
+    with backoff. This is *not* the retry chapter 7 forbids: that one is a
+    second GPU call at double credit, this one is a few seconds that saves the
+    credit already spent.
+  - The first four-minute song broke ingestion: `put` read the whole 47MB
+    normalised wav into memory and the 30s timeout expired mid-upload, which
+    surfaced as a 500 from our own API. Uploads now stream from the open file
+    (the hash is computed in a separate chunked pass, because SigV4 signs it)
+    and the timeout is 300s.
+- `logging.basicConfig` is set in `apps/api/main.py`. uvicorn configures its own
+  loggers and leaves the root at WARNING, so every `log.info` in this project -
+  including the line that reports what a GPU run cost - was going nowhere.
 
 `D-15`/`D-16` (database and auth) are still open.

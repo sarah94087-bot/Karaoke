@@ -6,6 +6,7 @@ is about is the wiring around it - that the stems reach storage, that the rows
 match what is on disk, and that re-running replaces rather than duplicates.
 """
 
+import tempfile
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -28,16 +29,16 @@ class StubSeparator:
 
     def __init__(self, gpu_seconds: float | None = None) -> None:
         self.gpu_seconds = gpu_seconds
-        self.calls: list[Path] = []
+        self.calls: list[str] = []
 
-    def separate(self, source: Path, destination: Path) -> Separated:
-        self.calls.append(source)
-        destination.mkdir(parents=True, exist_ok=True)
-        stems = {}
-        for name in STEM_NAMES:
-            path = destination / f"{name}.mp3"
-            path.write_bytes(f"{name} for {source.name}".encode())
-            stems[name] = path
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+        self.calls.append(source_key)
+        with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
+            stems = {}
+            for name in STEM_NAMES:
+                path = Path(tmp) / f"{name}.mp3"
+                path.write_bytes(f"{name} for {source_key}".encode())
+                stems[name] = storage.put(targets[name], path)
         return Separated(
             stems=stems,
             backend=self.name,
@@ -49,7 +50,7 @@ class StubSeparator:
 class ExplodingSeparator:
     name = "exploding"
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
         raise SeparationError("the GPU went away")
 
 
@@ -190,4 +191,4 @@ async def test_the_separator_is_given_the_normalised_audio(sessions, storage, tm
 
         await separate_song(session, storage, separator, song)
 
-    assert separator.calls[0].name == "normalised.wav"
+    assert separator.calls[0] == f"songs/{song.id}/normalised.wav"

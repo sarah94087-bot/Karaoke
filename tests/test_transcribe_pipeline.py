@@ -12,6 +12,7 @@ the row says which one is on the screen.
 ever spent GPU credit.
 """
 
+import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -42,11 +43,13 @@ USER = uuid.UUID("00000000-0000-0000-0000-000000000001")
 class StubSeparator:
     name = "stub"
 
-    def separate(self, source: Path, destination: Path) -> Separated:
-        destination.mkdir(parents=True, exist_ok=True)
-        stems = {name: destination / f"{name}.mp3" for name in STEM_NAMES}
-        for name, path in stems.items():
-            path.write_bytes(name.encode())
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
+        with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
+            stems = {}
+            for name in STEM_NAMES:
+                path = Path(tmp) / f"{name}.mp3"
+                path.write_bytes(name.encode())
+                stems[name] = storage.put(targets[name], path)
         return Separated(stems=stems, backend=self.name)
 
 

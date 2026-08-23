@@ -1,11 +1,14 @@
-"""T-1.6: one call takes a file and returns four stems.
+"""T-1.6 and T-3.3: one call takes a song key and leaves four stems in storage.
 
 The local CPU backend is exercised for real - it is free, which is the point of
 it existing. The Modal backend is exercised against a fake: a real call spends
 money out of a $1/month credit (docs/phase0/quotas.md), and a test suite that
-quietly bills the project is a bad test suite. What the fake checks is the part
-that is ours: that the result is unpacked, the stems land on disk, and
-gpu_seconds is carried out to the caller.
+quietly bills the project is a bad test suite.
+
+What the fake checks is the part that is ours, and since T-3.3 that part is the
+*links*. The GPU is handed one signed link to read the source and four to write
+the stems; no audio and no credential goes with the call. That is what these
+assertions are about.
 """
 
 import shutil
@@ -21,10 +24,15 @@ from packages.providers.separation import (
     ModalSeparator,
     Separated,
     SeparationError,
+    SeparationUnavailable,
     get_separator,
 )
+from packages.providers.storage import LocalStorage, StoredObject
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg encodes the stems")
+
+SOURCE_KEY = "songs/abc/normalised.wav"
+TARGETS = {name: f"songs/abc/stems/{name}.{STEM_FORMAT}" for name in STEM_NAMES}
 
 
 def synth(path: Path, seconds: float = 2.0) -> Path:
@@ -59,10 +67,10 @@ def test_the_four_stem_names_are_the_ones_the_mixer_shows():
     assert set(STEM_NAMES) == {str(kind) for kind in StemKind}
 
 
-def test_a_result_missing_a_stem_is_refused(tmp_path: Path):
+def test_a_result_missing_a_stem_is_refused():
     """Three of four is not a usable song, and the mixer has four faders."""
     with pytest.raises(SeparationError) as caught:
-        Separated(stems={"vocals": tmp_path / "v.mp3"}, backend="fake")
+        Separated(stems={"vocals": StoredObject(key="a", bytes=1)}, backend="fake")
 
     assert "drums" in str(caught.value)
 
@@ -97,20 +105,20 @@ def local_result(tmp_path_factory: pytest.TempPathFactory):
     pytest.importorskip("demucs", reason="demucs is the phase 0 separation engine")
 
     tmp = tmp_path_factory.mktemp("local-separation")
-    source = synth(tmp / "clip.wav", seconds=2.0)
-    out = tmp / "out"
-    return LocalDemucsSeparator().separate(source, out), out
+    storage = LocalStorage(tmp / "storage")
+    storage.put(SOURCE_KEY, synth(tmp / "clip.wav", seconds=2.0))
+    return LocalDemucsSeparator().separate(storage, SOURCE_KEY, TARGETS), storage
 
 
-def test_local_separation_returns_four_encoded_stems(local_result):
+def test_local_separation_leaves_four_encoded_stems_in_storage(local_result):
     """The acceptance criterion, on the backend that costs nothing to run."""
-    result, _ = local_result
+    result, storage = local_result
 
     assert set(result.stems) == set(STEM_NAMES)
-    for kind, path in result.stems.items():
-        assert path.is_file(), f"{kind} was not written"
-        assert path.suffix == f".{STEM_FORMAT}"
-        assert path.stat().st_size > 0, f"{kind} is empty"
+    for kind, stored in result.stems.items():
+        assert stored.key == TARGETS[kind]
+        assert storage.exists(stored.key), f"{kind} was not stored"
+        assert stored.bytes > 0, f"{kind} is empty"
 
 
 def test_local_separation_uses_no_gpu_seconds(local_result):
@@ -125,27 +133,32 @@ def test_local_separation_uses_no_gpu_seconds(local_result):
 def test_the_four_stems_are_different_audio(local_result):
     """Cheap guard against the wiring bug where one file is written four times,
     which looks exactly like success until someone presses "remove vocals"."""
-    result, _ = local_result
+    _, storage = local_result
 
-    contents = {path.read_bytes() for path in result.stems.values()}
+    contents = {storage.local_path(key).read_bytes() for key in TARGETS.values()}
 
     assert len(contents) == 4, "the stems are not four distinct pieces of audio"
 
 
-def test_the_intermediate_wavs_are_not_left_behind(local_result):
-    """Four uncompressed stems is ~120MB per song; the compressed set is ~15MB."""
-    _, out = local_result
+def test_no_uncompressed_intermediates_reach_storage(local_result):
+    """Four uncompressed stems is ~120MB per song; the compressed set is ~15MB.
+    The wavs exist for a moment in a temporary directory and go no further."""
+    _, storage = local_result
 
-    assert not list(out.glob("*.wav")), "uncompressed intermediates survived"
+    stored = [p.name for p in storage.root.rglob("*") if p.is_file()]
+
+    assert [name for name in stored if name.endswith(".wav")] == ["normalised.wav"]
 
 
 def test_local_separation_reports_a_failure_rather_than_crashing(tmp_path: Path):
     pytest.importorskip("demucs")
+    storage = LocalStorage(tmp_path / "storage")
     not_audio = tmp_path / "broken.wav"
     not_audio.write_bytes(b"RIFF____WAVEfmt ")
+    storage.put(SOURCE_KEY, not_audio)
 
     with pytest.raises(SeparationError):
-        LocalDemucsSeparator().separate(not_audio, tmp_path / "out")
+        LocalDemucsSeparator().separate(storage, SOURCE_KEY, TARGETS)
 
 
 # --- the remote backend, against a fake -------------------------------------
@@ -154,34 +167,35 @@ def test_local_separation_reports_a_failure_rather_than_crashing(tmp_path: Path)
 class FakeRemote:
     """Stands in for the deployed Modal function, shaped like its real return."""
 
-    def __init__(self, stems: dict[str, bytes], in_container_s: float = 7.5) -> None:
-        self._stems = stems
-        self._in_container_s = in_container_s
-        self.calls: list[tuple[str, int]] = []
+    def __init__(self, written: dict[str, int] | None = None, error: str | None = None) -> None:
+        self.written = written or dict.fromkeys(STEM_NAMES, 1024)
+        self.error = error
+        self.calls: list[tuple[str, dict[str, str]]] = []
 
-    def remote(self, filename: str, data: bytes) -> dict:
-        self.calls.append((filename, len(data)))
+    def remote(self, source_url: str, stem_urls: dict[str, str]) -> dict:
+        self.calls.append((source_url, stem_urls))
+        if self.error is not None:
+            return {"written": {}, "error": self.error, "timings": {"in_container_s": 1.0}}
         return {
             "cold_start": False,
-            "stems": self._stems,
+            "written": self.written,
             "timings": {
                 "boot_to_call_s": 1.1,
+                "fetch_s": 1.5,
                 "model_load_s": 2.2,
                 "separation_s": 6.2,
                 "encode_s": 3.3,
-                "in_container_s": self._in_container_s,
+                "upload_s": 1.9,
+                "in_container_s": 7.5,
             },
         }
 
 
-@pytest.fixture
-def fake_modal(monkeypatch: pytest.MonkeyPatch) -> FakeRemote:
-    remote = FakeRemote({name: f"{name}-audio".encode() for name in STEM_NAMES})
-
+def install(monkeypatch: pytest.MonkeyPatch, remote: FakeRemote) -> FakeRemote:
     class FakeFunction:
         @staticmethod
         def from_name(app: str, function: str) -> FakeRemote:
-            assert (app, function) == ("karuki-separation", "separate")
+            assert (app, function) == ("karuki-separation", "separate_to_storage")
             return remote
 
     monkeypatch.setitem(
@@ -190,32 +204,85 @@ def fake_modal(monkeypatch: pytest.MonkeyPatch) -> FakeRemote:
     return remote
 
 
-def test_the_remote_backend_writes_the_returned_stems(tmp_path: Path, fake_modal: FakeRemote):
-    source = tmp_path / "song.wav"
-    source.write_bytes(b"pretend audio")
-
-    result = ModalSeparator().separate(source, tmp_path / "out")
-
-    assert set(result.stems) == set(STEM_NAMES)
-    assert result.stems["vocals"].read_bytes() == b"vocals-audio"
-    assert fake_modal.calls == [("song.wav", len(b"pretend audio"))]
+@pytest.fixture
+def cloud(tmp_path: Path) -> LocalStorage:
+    """Storage that hands out absolute links, as an object store does."""
+    return LocalStorage(tmp_path / "storage", secret="s", base_url="https://storage.example")
 
 
-def test_the_remote_backend_reports_gpu_seconds(tmp_path: Path, fake_modal: FakeRemote):
+@pytest.fixture
+def fake_modal(monkeypatch: pytest.MonkeyPatch) -> FakeRemote:
+    return install(monkeypatch, FakeRemote())
+
+
+def test_the_gpu_is_given_links_and_never_the_audio(cloud: LocalStorage, fake_modal: FakeRemote):
+    """T-3.3. Phase 0 sent 23MB in the call and got 15MB back; this sends two
+    kinds of URL and a filename is not even among them."""
+    ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+    source_url, stem_urls = fake_modal.calls[0]
+    assert source_url.startswith("https://storage.example/")
+    assert set(stem_urls) == set(STEM_NAMES)
+    for name, url in stem_urls.items():
+        assert TARGETS[name] in url
+        assert "sig=" in url
+
+
+def test_an_upload_link_is_not_the_same_as_a_download_link(
+    cloud: LocalStorage, fake_modal: FakeRemote
+):
+    """The GPU writes with these. A link that also read would be a wider grant
+    than the job needs, and the method is inside the signature for that reason."""
+    ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+    _, stem_urls = fake_modal.calls[0]
+    readable = cloud.signed_url(TARGETS["vocals"], 3600)
+
+    assert stem_urls["vocals"].split("sig=")[1] != readable.split("sig=")[1]
+
+
+def test_the_remote_backend_records_where_the_stems_went(
+    cloud: LocalStorage, fake_modal: FakeRemote
+):
+    """It never sees the bytes, so the keys it asked for are what it reports."""
+    result = ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+    assert {name: stored.key for name, stored in result.stems.items()} == TARGETS
+    assert result.stems["vocals"].bytes == 1024
+
+
+def test_the_remote_backend_reports_gpu_seconds(cloud: LocalStorage, fake_modal: FakeRemote):
     """Chapter 7: the only way to know how much of the $1 credit is left."""
-    source = tmp_path / "song.wav"
-    source.write_bytes(b"pretend audio")
-
-    result = ModalSeparator().separate(source, tmp_path / "out")
+    result = ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
 
     assert result.gpu_seconds == 7.5
     assert result.timings["separation_s"] == 6.2
 
 
-def test_a_remote_failure_becomes_a_separation_error(tmp_path: Path, monkeypatch):
-    """Chapter 7 forbids an automatic retry on a GPU step - it costs double
-    credit - so the failure has to reach the caller intact."""
+def test_a_remote_run_that_reports_an_error_is_a_separation_error(
+    cloud: LocalStorage, monkeypatch: pytest.MonkeyPatch
+):
+    """The GPU returns its failures as a value rather than raising, because on
+    Modal a raised exception is a retry-shaped event and chapter 7 forbids an
+    automatic retry of a step that costs credit."""
+    install(monkeypatch, FakeRemote(error="RuntimeError: ffmpeg failed for bass"))
 
+    with pytest.raises(SeparationError, match="ffmpeg failed"):
+        ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+
+def test_a_remote_run_missing_a_stem_is_refused(
+    cloud: LocalStorage, monkeypatch: pytest.MonkeyPatch
+):
+    install(monkeypatch, FakeRemote(written={"vocals": 10, "drums": 10, "bass": 10}))
+
+    with pytest.raises(SeparationError, match="other"):
+        ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+
+def test_an_unreachable_call_becomes_a_separation_error(
+    cloud: LocalStorage, monkeypatch: pytest.MonkeyPatch
+):
     class Exploding:
         @staticmethod
         def from_name(app: str, function: str):
@@ -224,8 +291,19 @@ def test_a_remote_failure_becomes_a_separation_error(tmp_path: Path, monkeypatch
     monkeypatch.setitem(
         __import__("sys").modules, "modal", type("modal", (), {"Function": Exploding})
     )
-    source = tmp_path / "song.wav"
-    source.write_bytes(b"pretend audio")
 
     with pytest.raises(SeparationError):
-        ModalSeparator().separate(source, tmp_path / "out")
+        ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+
+def test_links_only_this_machine_can_open_are_refused_before_the_call(
+    tmp_path: Path, fake_modal: FakeRemote
+):
+    """A root-relative link means "this API", which from a rented container is
+    nothing at all. Better a clear message than a timeout inside a paid call."""
+    local_only = LocalStorage(tmp_path / "storage", secret="s")
+
+    with pytest.raises(SeparationUnavailable, match="absolute links"):
+        ModalSeparator().separate(local_only, SOURCE_KEY, TARGETS)
+
+    assert fake_modal.calls == [], "nothing should have been sent"

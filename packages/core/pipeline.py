@@ -15,8 +15,6 @@ is in fact working perfectly.
 
 import asyncio
 import logging
-import tempfile
-from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -279,31 +277,42 @@ async def _separate(
     await session.commit()
     announce(bus, job, song, "progress")
 
-    with tempfile.TemporaryDirectory(prefix="karuki-job-") as tmp:
-        try:
-            # to_thread, not inline: see the module docstring.
-            result = await asyncio.to_thread(separate, storage, separator, song, Path(tmp))
-        except SeparationUnavailable as exc:
-            # Not the song's fault: this process has no separation backend.
-            raise PipelineError("separation_unavailable", str(exc)) from exc
-        except SeparationError as exc:
-            raise PipelineError("separation_failed", str(exc)) from exc
+    try:
+        # to_thread, not inline: see the module docstring.
+        result = await asyncio.to_thread(separate, storage, separator, song)
+    except SeparationUnavailable as exc:
+        # Not the song's fault: this process has no separation backend.
+        raise PipelineError("separation_unavailable", str(exc)) from exc
+    except SeparationError as exc:
+        raise PipelineError("separation_failed", str(exc)) from exc
 
-        await jobs.record_gpu_seconds(session, job, result.gpu_seconds)
+    await jobs.record_gpu_seconds(session, job, result.gpu_seconds)
+    # The one line that says what the run actually cost and where the time
+    # went. On the remote backend it is the only place the fetch and upload
+    # times exist at all - the GPU reports them and nothing else keeps them
+    # until T-3.4 gives them a column.
+    log.info(
+        "job %s separated on %s: %.1fs gpu, %s",
+        job.id,
+        result.backend,
+        result.gpu_seconds or 0.0,
+        ", ".join(f"{name}={value}" for name, value in sorted(result.timings.items())),
+    )
 
-        # Encoding happens inside the separator, so this step covers storing the
-        # encoded stems and writing their rows - the part that is genuinely
-        # still to do when separation returns.
-        await jobs.advance(session, job, JobStep.ENCODING, song)
-        await session.commit()
-        announce(bus, job, song, "progress")
-        await record_stems(session, storage, song, result)
+    # Encoding and storing both happen inside the separator - on the GPU since
+    # T-3.3, which writes the stems to storage itself and never sends them
+    # here. What is left for this step is the rows, and the moment they exist
+    # the song is playable, which is what the step is really announcing.
+    await jobs.advance(session, job, JobStep.ENCODING, song)
+    await session.commit()
+    announce(bus, job, song, "progress")
+    await record_stems(session, song, result)
 
-        # Tempo and key. Deliberately not its own step: chapter 7's pipeline
-        # does not have one, it takes about two seconds, and it cannot fail the
-        # job. It runs here rather than during ingest so that it does not delay
-        # the moment the song becomes playable.
-        await analyse_song(session, storage, song)
+    # Tempo and key. Deliberately not its own step: chapter 7's pipeline does
+    # not have one, it takes about two seconds, and it cannot fail the job. It
+    # runs here rather than during ingest so that it does not delay the moment
+    # the song becomes playable.
+    await analyse_song(session, storage, song)
 
     # D-28: four stems on disk is everything the player needs. The lyrics can
     # keep the user waiting; the singing does not have to.

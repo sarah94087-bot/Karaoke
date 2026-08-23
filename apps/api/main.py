@@ -7,6 +7,7 @@ module-level singleton, which matters once T-1.3 puts a database behind it.
 """
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -29,6 +30,15 @@ from .routers import files, jobs, lyrics, songs, system
 from .runner import JobRunner
 
 log = logging.getLogger("karuki.api")
+
+# uvicorn configures its own loggers and leaves the root at WARNING, so every
+# `log.info` this project writes - the separation timings, the recovery notice
+# at startup - was going nowhere. Set once, here, because this module is what
+# both entry points import.
+logging.basicConfig(
+    level=os.getenv("KARUKI_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 DESCRIPTION = """\
 Backend for the Hebrew karaoke player: upload a song, separate it into stems,

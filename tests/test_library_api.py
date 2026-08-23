@@ -7,6 +7,7 @@ playable while still processing (D-28), and a song whose job failed.
 
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -33,15 +34,15 @@ class StubSeparator:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
 
-    def separate(self, source: Path, destination: Path) -> Separated:
+    def separate(self, storage, source_key: str, targets: dict[str, str]) -> Separated:
         if self.error is not None:
             raise self.error
-        destination.mkdir(parents=True, exist_ok=True)
-        stems = {}
-        for name in STEM_NAMES:
-            path = destination / f"{name}.mp3"
-            path.write_bytes(name.encode())
-            stems[name] = path
+        with tempfile.TemporaryDirectory(prefix="stub-stems-") as tmp:
+            stems = {}
+            for name in STEM_NAMES:
+                path = Path(tmp) / f"{name}.mp3"
+                path.write_bytes(name.encode())
+                stems[name] = storage.put(targets[name], path)
         return Separated(stems=stems, backend=self.name)
 
 
