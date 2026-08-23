@@ -337,6 +337,59 @@ a.song-title:hover {
   accent-color: var(--accent);
 }
 
+/* --- the A-B loop (T-5.2) -------------------------------------------------- */
+
+.timeline {
+  display: grid;
+  gap: 0.25rem;
+}
+
+/* The marked section, under the scrubber. Its own element rather than a
+   background on the input, because a range input's own direction is the page's
+   and a section that ran right-to-left would read as a different section. */
+.loop-band {
+  direction: ltr;
+  position: relative;
+  block-size: 4px;
+  border-radius: 999px;
+  background: #2a2a3c;
+}
+
+.loop-band span {
+  position: absolute;
+  inset-block: 0;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.loop-controls {
+  display: grid;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+}
+
+.loop-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.loop-buttons button {
+  flex: 1 1 auto;
+  /* Chapter 8's phone requirement, and T-1.17 measured every target at 44px. */
+  min-block-size: 44px;
+}
+
+.loop-controls[data-active="true"] .loop-state {
+  color: var(--accent);
+}
+
+.loop-state {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 a.playable-banner {
   text-decoration: none;
   color: var(--text);

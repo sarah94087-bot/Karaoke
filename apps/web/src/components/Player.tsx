@@ -15,7 +15,19 @@ import {
   saveSettings,
   stemUrl,
 } from "@/lib/api";
+import { LoopControls } from "@/components/LoopControls";
 import { type StemMode, resolveMode, storeMode } from "@/lib/player/capability";
+import {
+  type Loop,
+  LOOP_CHECK_MS,
+  NO_LOOP,
+  clearLoop,
+  crossedEnd,
+  loopBand,
+  markEnd,
+  markStart,
+  wrapTo,
+} from "@/lib/player/loop";
 import {
   type Channel,
   PlayerEngine,
@@ -71,6 +83,13 @@ export function Player({
   // T-2.7. State rather than a prop read: a nudge has to move the words on the
   // screen now, not after a reload.
   const [offsetMs, setOffsetMs] = useState(() => offsetOf(song.settings));
+  // T-5.2. Not saved with the settings: a practice section belongs to the
+  // half hour someone spends on one line, not to the song for ever.
+  const [loop, setLoop] = useState<Loop>(NO_LOOP);
+  // The wrap is watched on the audio clock in an animation frame, which cannot
+  // see React state - the same refs pattern the lyrics editor uses.
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
 
   /**
    * Chapter 5 says settings are "saved automatically on every change in the
@@ -206,6 +225,68 @@ export function Player({
   const seek = useCallback((seconds: number) => engineRef.current?.seek(seconds), []);
 
   /**
+   * The loop: the audio clock decides *where* we are, and two things ask.
+   *
+   * Chapter 8's rule holds - the position always comes from `positionNow()`,
+   * which is the engine's own clock, never from counting elapsed milliseconds.
+   * What changes here is only how often somebody asks.
+   *
+   * `requestAnimationFrame` asks once a frame, which is the precise answer
+   * while the singer is looking at the screen. But a browser freezes frames in
+   * a hidden tab: measured in Chrome, **zero frames in two seconds** with the
+   * audio still playing. For the lyrics that is harmless - nobody is reading
+   * them. For a loop it is not: the section would quietly stop repeating and
+   * the song would run on, which is a change to what the user *hears* while
+   * they are not looking. So an interval asks as well, and whichever gets
+   * there first wraps.
+   *
+   * The honest limit: browsers clamp timers in a hidden tab to about a second,
+   * so a loop the user cannot see may overshoot by that much before it comes
+   * back. Sample-accurate wrapping belongs in the worklet, and T-1.12 is
+   * explicit that editing that file means re-earning phase 0's drift
+   * measurements - not something to spend on a tab nobody is watching.
+   */
+  useEffect(() => {
+    if (state === null || !state.ready) return;
+    let previous = engineRef.current?.positionNow() ?? 0;
+    const check = () => {
+      const engine = engineRef.current;
+      if (engine === null || !engine.getState().playing) return;
+      const now = engine.positionNow();
+      if (crossedEnd(loopRef.current, previous, now)) {
+        engine.seek(wrapTo(loopRef.current));
+        previous = wrapTo(loopRef.current);
+      } else {
+        previous = now;
+      }
+    };
+
+    let frame = 0;
+    const tick = () => {
+      check();
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    const timer = window.setInterval(check, LOOP_CHECK_MS);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearInterval(timer);
+    };
+  }, [state?.ready]);
+
+  const markLoopStart = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine === null) return;
+    setLoop((current) => markStart(current, engine.positionNow(), engine.getState().duration));
+  }, []);
+
+  const markLoopEnd = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine === null) return;
+    setLoop((current) => markEnd(current, engine.positionNow(), engine.getState().duration));
+  }, []);
+
+  /**
    * The mix state is the source of truth for the UI; the engine is told about
    * every stem afterwards. Applying the whole mix rather than the one fader
    * that moved keeps the two from drifting apart - "remove vocals" changes one
@@ -301,6 +382,8 @@ export function Player({
     );
   }
 
+  const band = loopBand(loop, state.duration);
+
   return (
     <div className="player">
       <div className="transport">
@@ -313,15 +396,33 @@ export function Player({
         </span>
       </div>
 
-      <input
-        className="scrubber"
-        type="range"
-        min={0}
-        max={Math.max(1, Math.floor(state.duration))}
-        step={1}
-        value={Math.floor(state.position)}
-        onChange={(event) => seek(Number(event.target.value))}
-        aria-label={t.player.clock}
+      <div className="timeline">
+        <input
+          className="scrubber"
+          type="range"
+          min={0}
+          max={Math.max(1, Math.floor(state.duration))}
+          step={1}
+          value={Math.floor(state.position)}
+          onChange={(event) => seek(Number(event.target.value))}
+          aria-label={t.player.clock}
+        />
+        {/* The marked section, drawn under the scrubber. Left to right always
+            means start to end, whatever the page direction, which is why this
+            band is its own LTR element rather than a background on the input. */}
+        {band !== null ? (
+          <div className="loop-band" aria-hidden="true">
+            <span style={{ insetInlineStart: `${band.from}%`, inlineSize: `${band.to - band.from}%` }} />
+          </div>
+        ) : null}
+      </div>
+
+      <LoopControls
+        loop={loop}
+        onStart={markLoopStart}
+        onEnd={markLoopEnd}
+        onClear={() => setLoop(clearLoop())}
+        t={t}
       />
 
       {words}

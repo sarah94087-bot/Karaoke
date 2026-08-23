@@ -42,6 +42,14 @@
       "bass": "Bass",
       "other": "Other",
       "backing": "Backing"
+    },
+    "loop": {
+      "markStart": "Mark start",
+      "markEnd": "Mark end",
+      "clear": "Clear loop",
+      "repeating": "Repeating",
+      "needEnd": "Now mark where the section ends.",
+      "hint": "Mark a section to repeat it over and over."
     }
   },
   "lyrics": {

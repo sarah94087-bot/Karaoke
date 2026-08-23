@@ -163,6 +163,9 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
+`T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
+the rest of phase 3 is waiting on account signups.
+
 Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.5` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
@@ -1143,5 +1146,44 @@ From `T-3.5`:
   because the per-process cache only fills when the first one finishes. Both are
   after `playable`, so nobody waits on them; a per-key lock in `S3Storage` is the
   fix if the bandwidth ever matters.
+
+From `T-5.2` (done out of order - it depends only on the player, and phase 3
+was blocked on account signups):
+
+- **A-B loop: two buttons, not a drag on the timeline.** The marks are made
+  while listening, one at a time, with attention on the music - the playhead is
+  already where the ear is. Same reasoning T-1.14 gave for the key buttons.
+- The rules are in `src/lib/player/loop.ts`, apart from the component, because
+  every one of them has an edge: marking the end first means "from the top",
+  marks given backwards are put in order rather than refused, moving the start
+  forward **drops** an end left behind it (the alternative loops backwards over
+  music the singer has just left), and a loop shorter than a second is pushed to
+  a second - below that it is a buzz, and it is where the vocoder artefacts
+  live.
+- **A wrap is a *crossing*, not "past the end".** Someone who drags the scrubber
+  beyond the section has left it on purpose, and a loop that pulled them back
+  would be fighting them.
+- The loop is **not saved with the settings**: a practice section belongs to the
+  half hour spent on one line, not to the song for ever.
+- **The browser check found the thing no unit test would have.** In a hidden
+  tab `requestAnimationFrame` freezes completely - measured at **zero frames in
+  two seconds** with the audio still playing. For the lyrics highlight that is
+  harmless, nobody is reading them; for a loop it changes what the user *hears*,
+  because the section quietly stops repeating. The watcher now runs on rAF
+  **and** a 200ms interval, whichever gets there first, with the position always
+  coming from `positionNow()` so chapter 8's rule about the clock is untouched.
+- Verified in a real browser on a real song: marked 0:21-0:25 and the clock ran
+  `0:22 0:23 0:24 0:25 0:22 …` for three full cycles. **rAF fired 21 times in
+  17 seconds** during that measurement - about 1fps, because the window was not
+  in front - so what was observed wrapping is the interval fallback doing
+  exactly the job it was added for.
+- Honest limit, written in the code: browsers clamp timers in a hidden tab to
+  roughly a second, so a loop nobody is looking at can overshoot by that much.
+  Sample-accurate wrapping belongs in the worklet, and T-1.12 is explicit that
+  editing that file means re-earning phase 0's drift measurements.
+- Chrome will **freeze a hidden tab that is not playing audio** outright -
+  clicks queue and JavaScript does not run, which looks exactly like a broken
+  page. A tab playing audio is exempt. Worth knowing before debugging a live
+  check that has gone quiet.
 
 `D-15`/`D-16` (database and auth) are still open.
