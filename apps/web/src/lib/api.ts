@@ -122,6 +122,9 @@ async function request<T>(path: string, init?: RequestInit, token?: string | nul
     );
   }
 
+  // 204, which is what deleting and "played" answer with. `json()` on an empty
+  // body throws, and a caller that asked for nothing should not have to care.
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -373,4 +376,49 @@ export function createSong(uploadKey: string, filename: string): Promise<UploadR
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ upload_key: uploadKey, filename }),
   });
+}
+
+export interface RemovalCandidate {
+  song_id: string;
+  title: string;
+  bytes: number;
+  /** Null means never played, which is what makes it the first suggestion. */
+  last_played_at: string | null;
+}
+
+export interface Quota {
+  songs_this_month: number;
+  songs_per_month: number;
+  songs_left: number;
+  storage_bytes: number;
+  storage_limit_bytes: number;
+  storage_left_bytes: number;
+  running_jobs: number;
+  concurrent_jobs: number;
+  max_song_seconds: number;
+  candidates: RemovalCandidate[];
+}
+
+export function getQuota(token?: string | null): Promise<Quota> {
+  return request<Quota>("/me/quota", undefined, token);
+}
+
+/** Chapter 6's `DELETE /library/{song_id}` - the song and the bytes it holds. */
+export async function deleteSong(songId: string): Promise<void> {
+  await request<unknown>(`/songs/${songId}`, { method: "DELETE" });
+}
+
+/**
+ * Note that a song was actually sung.
+ *
+ * Called when playback starts, not when the page opens: opening a song to fix
+ * a line in the editor is not singing it, and chapter 9 deletes songs nobody
+ * has played for six months on the strength of this.
+ */
+export function markPlayed(songId: string): Promise<void> {
+  return request<unknown>(`/songs/${songId}/played`, { method: "POST" })
+    .then(() => undefined)
+    .catch(() => {
+      // Never worth interrupting a song for. The next play tries again.
+    });
 }

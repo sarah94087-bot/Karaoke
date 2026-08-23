@@ -91,6 +91,10 @@ class Song(Base):
     lyrics_status: Mapped[str] = mapped_column(String(16), default=LyricsStatus.PENDING)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Null means never sung. D-30 offers the least-played songs when the storage
+    # is full, and chapter 9 removes one nobody has played for six months; both
+    # are the same fact, and "never" is the strongest form of it (T-3.8).
+    last_played_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     stems: Mapped[list["Stem"]] = relationship(back_populates="song", cascade="all, delete-orphan")
     jobs: Mapped[list["Job"]] = relationship(back_populates="song", cascade="all, delete-orphan")
@@ -111,6 +115,7 @@ class Song(Base):
         # second person to upload a song the first person's row.
         UniqueConstraint("user_id", "content_hash", name="uq_songs_owner_content"),
         Index("ix_songs_user_created", "user_id", "created_at"),
+        Index("ix_songs_user_played", "user_id", "last_played_at"),
     )
 
 

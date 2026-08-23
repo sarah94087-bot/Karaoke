@@ -5,7 +5,8 @@
   },
   "nav": {
     "library": "Library",
-    "upload": "Add a song"
+    "upload": "Add a song",
+    "account": "My account"
   },
   "upload": {
     "title": "Add a song",
@@ -189,7 +190,10 @@
     "reset_link_invalid": "That reset link is no longer valid. You can ask for a new one.",
     "same_password": "That is the password you already have. Choose a different one.",
     "not_signed_in": "You need to be signed in to see this.",
-    "auth_unavailable": "The accounts service is unavailable right now. Try again in a moment."
+    "auth_unavailable": "The accounts service is unavailable right now. Try again in a moment.",
+    "monthly_songs_exhausted": "You have used this month's new songs. More become available at the start of next month.",
+    "storage_full": "There is no room for another song. You can free some up on the account screen.",
+    "job_already_running": "A song is already being processed. Wait for it to finish and then upload the next one."
   },
   "auth": {
     "signInTitle": "Sign in",
@@ -219,5 +223,16 @@
     "setPasswordExplain": "Choose a new password, at least eight characters.",
     "saving": "Saving…",
     "passwordChanged": "Your password has been changed."
+  },
+  "account": {
+    "title": "My account",
+    "songsThisMonth": "New songs this month",
+    "songsLeft": "{n} left",
+    "storage": "Storage",
+    "freeUpTitle": "Free up space",
+    "freeUpHint": "Least played first. Removing one frees its space straight away.",
+    "neverPlayed": "never played",
+    "remove": "Remove",
+    "removing": "Removing…"
   }
 }

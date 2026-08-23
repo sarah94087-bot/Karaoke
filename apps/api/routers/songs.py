@@ -15,7 +15,7 @@ import hashlib
 import re
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -32,6 +32,7 @@ from packages.audio.normalize import (
     normalise,
 )
 from packages.core import jobs as job_service
+from packages.core import quota
 from packages.core.enums import SongStatus, SourceType, StemKind
 from packages.core.models import Job, Song, UserSongSettings
 from packages.core.settings import get_settings, save_settings
@@ -379,12 +380,54 @@ async def put_settings(
 UPLOAD_KEY = re.compile(r"^uploads/[0-9a-f-]{36}/original(\.[a-z0-9]{1,5})$")
 
 
+@router.delete(
+    "/songs/{song_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a song and everything it occupies",
+)
+async def delete_song(
+    session: SessionDep, storage: StorageDep, user_id: UserDep, song_id: uuid.UUID
+) -> Response:
+    """Chapter 6's `DELETE /library/{song_id}` - "including freeing storage".
+
+    Storage first, then the row. The other order can leave objects nobody has a
+    row for, which is a bucket that fills up with things no screen can show and
+    no user can delete. A row without its objects is recoverable by
+    reprocessing; objects without a row are not findable at all.
+    """
+    song = await owned_song(session, song_id, user_id)
+    storage.delete_prefix(f"songs/{song.id}")
+    await session.delete(song)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/songs/{song_id}/played",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Note that this song was sung",
+)
+async def mark_played(session: SessionDep, user_id: UserDep, song_id: uuid.UUID) -> Response:
+    """What makes "least played" and "not played for six months" mean anything.
+
+    Called when playback actually starts, not when the page opens: opening a
+    song to fix a line in the lyrics editor is not singing it, and chapter 9
+    deletes on the strength of this.
+    """
+    song = await owned_song(session, song_id, user_id)
+    song.last_played_at = datetime.now(UTC)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/songs/upload-url",
     response_model=UploadTicket,
     summary="Where to send the file",
 )
-async def upload_url(storage: StorageDep, user_id: UserDep, body: UploadUrlRequest) -> UploadTicket:
+async def upload_url(
+    session: SessionDep, storage: StorageDep, user_id: UserDep, body: UploadUrlRequest
+) -> UploadTicket:
     """Chapter 6: the file goes straight to storage, not through the API.
 
     What this hands out is narrow on purpose - one key, one method, one hour.
@@ -403,6 +446,11 @@ async def upload_url(storage: StorageDep, user_id: UserDep, body: UploadUrlReque
             f"the file is larger than {settings.max_upload_bytes // (1024 * 1024)}MB",
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
         )
+
+    # Before the bytes, not after: refusing a song once it is in the bucket has
+    # already spent the transfer the limit exists to protect (D-30). Not the
+    # concurrency limit, though - see check_can_add.
+    await _within_quota(session, user_id, concurrency=False)
 
     key = f"uploads/{uuid.uuid4()}/original{suffix}"
     return UploadTicket(
@@ -556,6 +604,13 @@ async def _ingest(
             response.status_code = status.HTTP_200_OK
             return _created(existing, already_existed=True)
 
+        # After the dedup, not before (T-3.8). A song the user already has
+        # creates no job, no stems and no bytes, so refusing it for "a song is
+        # already being processed" would be refusing something that costs
+        # nothing. Checked here rather than only when the ticket was issued
+        # because a ticket lasts an hour and the answer can change in it.
+        await _within_quota(session, user_id)
+
         song = Song(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -582,6 +637,27 @@ async def _ingest(
 
     runner.schedule(job.id)
     return _created(song, already_existed=False, job_id=job.id)
+
+
+async def _within_quota(
+    session: AsyncSession, user_id: uuid.UUID, *, concurrency: bool = True
+) -> None:
+    """Chapter 9's limits, in the shape the rest of this API refuses things.
+
+    D-30: never a silent stop that looks like a fault. The code names which
+    limit it was, and `details` carries the numbers, so the screen can say how
+    much is used out of how much - and, when the disk is full, offer the songs
+    to remove.
+    """
+    try:
+        await quota.check_can_add(session, user_id, concurrency=concurrency)
+    except quota.QuotaExceeded as exc:
+        raise ApiError(
+            exc.code,
+            str(exc),
+            status_code=status.HTTP_409_CONFLICT,
+            details={"used": exc.used, "limit": exc.limit},
+        ) from exc
 
 
 def _store(

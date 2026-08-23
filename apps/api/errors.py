@@ -23,11 +23,21 @@ class ApiError(Exception):
     screens.
     """
 
-    def __init__(self, code: str, message: str, status_code: int = 400) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status_code: int = 400,
+        details: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
+        # Numbers the screen needs to say something specific - "9 of 10 songs
+        # this month" rather than "quota exceeded" (D-30). Absent on every other
+        # error, which is why it is optional rather than an empty dict.
+        self.details = details
 
 
 def error_body(code: str, message: str, **extra: object) -> dict[str, object]:
@@ -53,7 +63,8 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return json_error(exc.status_code, error_body(exc.code, exc.message))
+        extra = {"details": exc.details} if exc.details else {}
+        return json_error(exc.status_code, error_body(exc.code, exc.message, **extra))
 
     @app.exception_handler(HTTPException)
     async def _http_error(_: Request, exc: HTTPException) -> JSONResponse:

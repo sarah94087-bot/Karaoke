@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import type { Dictionary } from "@/i18n";
+import Link from "next/link";
+
 import { ApiError, createSong, createUploadTicket, putToStorage } from "@/lib/api";
 
 /**
@@ -23,6 +25,9 @@ export function UploadForm({ t, locale }: { t: Dictionary; locale: string }) {
   const [stage, setStage] = useState<"idle" | "preparing" | "sending" | "finishing">("idle");
   const [sent, setSent] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // D-30: an over-quota message has to offer the way out, not just name the
+  // problem. These are the codes where there is somewhere to go.
+  const [showAccount, setShowAccount] = useState(false);
   const busy = stage !== "idle";
 
   async function submit(event: React.FormEvent) {
@@ -51,6 +56,7 @@ export function UploadForm({ t, locale }: { t: Dictionary; locale: string }) {
     } catch (caught) {
       const code = caught instanceof ApiError ? caught.code : "unknown";
       setError(t.errors[code as keyof typeof t.errors] ?? t.errors.unknown);
+      setShowAccount(["storage_full", "monthly_songs_exhausted"].includes(code));
       setStage("idle");
     }
   }
@@ -99,6 +105,11 @@ export function UploadForm({ t, locale }: { t: Dictionary; locale: string }) {
       ) : null}
 
       {error ? <p className="song-error">{error}</p> : null}
+      {showAccount ? (
+        <Link className="auth-link" href={`/${locale}/account`}>
+          {t.account.freeUpTitle}
+        </Link>
+      ) : null}
 
       <button type="submit" disabled={file === null || busy}>
         {busy ? t.upload.uploading : t.upload.submit}

@@ -66,6 +66,9 @@ export function AccountBar({ t, locale }: { t: Dictionary; locale: string }) {
         </Link>
       ) : (
         <>
+          <Link className="auth-link" href={`/${locale}/account`}>
+            {t.nav.account}
+          </Link>
           <span className="account-email" dir="ltr">
             {session.email}
           </span>

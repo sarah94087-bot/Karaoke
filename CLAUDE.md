@@ -173,12 +173,12 @@ hand in both text and time.
 `T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
 the rest of phase 3 is waiting on account signups.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.7` are done —
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.8` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
 carrying the handle on its remote call and what it spent, staged readiness
-measured end to end in the cloud configuration, accounts, and a library that is
-one person's.
+measured end to end in the cloud configuration, accounts, a library that is one
+person's, and chapter 9's limits with the screen that shows them.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:

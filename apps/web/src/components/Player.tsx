@@ -13,6 +13,7 @@ import {
   getLyrics,
   isPending,
   saveSettings,
+  markPlayed,
   stemUrl,
 } from "@/lib/api";
 import { LoopControls } from "@/components/LoopControls";
@@ -225,6 +226,25 @@ export function Player({
   const seek = useCallback((seconds: number) => engineRef.current?.seek(seconds), []);
 
   /**
+   * Play or pause, and tell the API the first time this song is actually sung.
+   *
+   * Once per visit, not per press: chapter 9 deletes songs nobody has played
+   * for six months and D-30 offers up the least played, so this is the fact
+   * both rules rest on - and pausing to find your place is not a second play.
+   */
+  const played = useRef(false);
+  const startOrPause = useCallback(async () => {
+    const engine = engineRef.current;
+    if (engine === null) return;
+    const starting = !engine.getState().playing;
+    await engine.toggle();
+    if (starting && !played.current) {
+      played.current = true;
+      void markPlayed(song.id);
+    }
+  }, [song.id]);
+
+  /**
    * The loop: the audio clock decides *where* we are, and two things ask.
    *
    * Chapter 8's rule holds - the position always comes from `positionNow()`,
@@ -387,7 +407,7 @@ export function Player({
   return (
     <div className="player">
       <div className="transport">
-        <button type="button" onClick={() => void engineRef.current?.toggle()}>
+        <button type="button" onClick={() => void startOrPause()}>
           {state.playing ? t.player.pause : t.player.play}
         </button>
         <span className="clock" aria-live="off">
