@@ -71,6 +71,13 @@ The same step in the image, which is how it runs on deploy:
 docker compose -f infra\docker\compose.yaml run --rm api alembic upgrade head
 ```
 
+Give the web app its browser-safe settings (after any change to `SUPABASE_*`
+in `.env`; Next reads env files from its own directory, not the repo root):
+
+```
+.venv\Scripts\python.exe scripts\web_env.py
+```
+
 Apply the bucket's CORS rule (needed once per bucket, and again when a
 deployment adds its own origin):
 
@@ -1186,4 +1193,70 @@ was blocked on account signups):
   page. A tab playing audio is exempt. Worth knowing before debugging a live
   check that has gone quiet.
 
-`D-15`/`D-16` (database and auth) are still open.
+From `T-3.6`:
+
+- **`D-15` and `D-16` are both closed, by one signup: Supabase.** Free tier, no
+  card asked for at any point (verified the way `T-0.6` insists on). Project
+  `karuki`, region **Central EU (Frankfurt)**, `eu-central-1`.
+- The hosted Postgres is **17.6**, which is what `T-1.3` pinned the local
+  container to `17-alpine` for. That guess, made five days earlier, was right,
+  and a mismatch found at deploy time is the expensive kind.
+- Migrations were run against it: three of them, up clean, **and down to zero
+  tables and back up again on the hosted database itself**. `pgcrypto` is
+  present, so `gen_random_uuid()` works server-side as `T-1.4` assumes.
+- **Connect with the Session pooler string, not the direct one.** The direct
+  connection is IPv6-only and most free hosts dial out over IPv4; it would have
+  failed at deploy time rather than here.
+- **`SUPABASE_DATABASE_URL`, not `DATABASE_URL`.** The local Postgres owns that
+  name, and the test suite drops every table - pointing it at the cloud by
+  accident is a bad afternoon. The switch happens in `T-3.10`.
+- **No `@supabase/supabase-js`.** `apps/web/src/lib/auth.ts` is four POSTs and a
+  refresh; the same reasoning that kept boto3 and httpx out of the API. Adding
+  the library later changes nothing above `signIn`/`signOut`/`currentSession`.
+- **The session lives in a cookie, not localStorage**, because the library and
+  song pages are server-rendered and the *server* needs the token to ask the API
+  for this user's songs - which is `T-3.7`. It is not `httpOnly`, since the
+  browser writes it; the honest fix is a route handler doing the exchange
+  server-side, and `D-31` is when that earns its complexity.
+- **The API does not check tokens yet.** T-3.6 is the account surface; the
+  binding of songs to their owner is T-3.7, which is why nothing here gates the
+  library. Hiding it behind a sign-in that does not yet protect it would be
+  theatre.
+- **Verified live against the real project, all four**: a wrong password gives
+  `bad_credentials` and its Hebrew sentence with no cookie written; a real sign
+  in put `sarah94087@gmail.com` in the account bar with 58 minutes on the token
+  and nothing in the address bar; sign out cleared the cookie, returned the bar
+  to "כניסה" and landed on `/he/signin`; and a reset ran end to end - link
+  requested, link followed, new password saved, "הסיסמה הוחלפה".
+- **Supabase does not revoke other sessions when a password changes.** Assumed
+  it did, checked, and it did not: a token from before the change still answered
+  `200` at `/auth/v1/user` afterwards. `POST /auth/v1/logout?scope=global` is
+  what actually ends them. Worth knowing before relying on a password change to
+  shut a door.
+- **The live check found three things the tests could not, all in the same
+  seam** - what an emailed link does when it comes back.
+  1. Confirming an address does not just mark it confirmed: Supabase redirects
+     with a **live session in the URL fragment**. Nothing read it, so the link
+     landed on the library *still signed out*, with an access token sitting in
+     the address bar and in history. `AccountBar` now adopts that session before
+     it even looks at the cookie, and rewrites the URL.
+  2. Then the fix made a worse bug: a **recovery** link carries the same shape
+     of session, so a password reset became a silent sign-in - the person was
+     taken to the library and their password was never changed. It looked
+     exactly like success. The fragment says `type=recovery`, and the app now
+     routes on that. Deliberately **not** by fixing Supabase's redirect
+     allow-list: `redirect_to` is honoured only if the address is configured
+     there and falls back to the site root *silently* when it is not, and an app
+     one console setting away from a broken password reset is not one to ship.
+  3. `422 same_password` had no mapping, so retyping your existing password
+     produced the generic "that did not go through" - the least useful sentence
+     for somebody who has just typed a password twice. It has its own now.
+  Nine tests cover this, two of them built from the real links.
+- **Email is the constraint on this tier.** Confirmation is on
+  (`mailer_autoconfirm: false`), and the built-in mailer sends only to the
+  project owner's address, a couple of messages an hour. `too_many_attempts` is
+  its own code and its own Hebrew sentence for exactly that. Real SMTP is a
+  `T-3.10` question.
+- Tokens are **ES256** (the project publishes a JWKS), so verifying them in the
+  API cannot be done with `hmac` alone the way the storage signatures are.
+  That is `T-3.7`'s first decision.

@@ -337,6 +337,80 @@ a.song-title:hover {
   accent-color: var(--accent);
 }
 
+/* --- accounts (T-3.6) ------------------------------------------------------ */
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  /* Reserved even while the cookie is being read, so the page does not jump
+     once it is - see AccountBar for why it renders empty rather than nothing. */
+  min-block-size: 2.5rem;
+  padding-inline: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.account-email {
+  color: var(--muted);
+  unicode-bidi: isolate;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0.4rem 0.6rem;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.auth-page {
+  max-inline-size: 26rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.field input {
+  font: inherit;
+  padding: 0.7rem;
+  /* 44px, the target size T-1.17 measured every control against. */
+  min-block-size: 44px;
+  border-radius: 8px;
+  border: 1px solid #3a3a4c;
+  background: var(--surface);
+  color: var(--text);
+  unicode-bidi: isolate;
+}
+
+.field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.auth-footer {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.auth-link {
+  color: var(--accent);
+}
+
 /* --- the A-B loop (T-5.2) -------------------------------------------------- */
 
 .timeline {
