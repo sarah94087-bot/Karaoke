@@ -22,6 +22,7 @@ from packages.providers.separation import get_separator
 from packages.providers.storage import Storage, get_storage
 from packages.providers.transcription import get_transcriber
 
+from .auth import get_verifier
 from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
@@ -84,6 +85,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     deps.get_session, with a code the web app can render.
     """
     app.state.storage = build_storage()
+    # Built once: it caches the project's public keys, and a per-request
+    # verifier would fetch them on every request.
+    app.state.verifier = get_verifier(settings.supabase_url, settings.dev_user_id)
     # One instance, shared by the job runner and by the manual search endpoint,
     # so there is a single place that decides which database is in use.
     app.state.catalogue = get_catalogue(settings.lyrics_catalogue)
@@ -125,6 +129,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    # A production deployment with no identity provider would serve every user
+    # the same library. Better to refuse to start than to find that out from
+    # the outside.
+    if not settings.is_local and not settings.supabase_url:
+        raise RuntimeError(
+            "SUPABASE_URL is required outside local development: without it every request "
+            "is the same user and songs are not protected from one another"
+        )
+
     app = FastAPI(
         title="karuki API",
         version=settings.version,

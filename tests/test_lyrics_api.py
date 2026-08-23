@@ -37,8 +37,9 @@ def a_song(connect: Callable[[], object]) -> Callable[..., str]:
     def _song(lyrics_status: str = "pending") -> str:
         with connect() as conn:
             row = conn.execute(
-                "insert into songs (title, source_type, status, is_playable, lyrics_status) "
-                "values ('שיר', 'file', 'processing', true, %s) returning id",
+                "insert into songs (user_id, title, source_type, status, is_playable, "
+                "lyrics_status) "
+                "values ('00000000-0000-0000-0000-000000000001', 'שיר', 'file', 'processing', true, %s) returning id",
                 [lyrics_status],
             ).fetchone()
         return str(row[0])

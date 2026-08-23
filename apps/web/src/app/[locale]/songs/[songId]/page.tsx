@@ -6,6 +6,8 @@ import { SongFacts } from "@/components/SongFacts";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { ApiError, getLyrics, getSong, isPending } from "@/lib/api";
+import { SignedOut } from "@/components/SignedOut";
+import { serverToken } from "@/lib/session-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +20,16 @@ export default async function SongPage({
   if (!isLocale(locale)) notFound();
   const t = await getDictionary(locale);
 
+  const token = await serverToken();
+
   try {
-    const song = await getSong(songId);
+    const song = await getSong(songId, token);
     // Alongside the song rather than after it: the words are what this screen
     // is for, and a client fetch would show the "on the way" state for a moment
     // on a song whose lyrics have been sitting in the database for a week.
     // Failure is fine - the player asks again itself, and keeps asking while
     // the pipeline is still working (D-28).
-    const lyrics = await getLyrics(songId).catch(() => null);
+    const lyrics = await getLyrics(songId, undefined, token).catch(() => null);
 
     return (
       <main>
@@ -62,6 +66,7 @@ export default async function SongPage({
     );
   } catch (error) {
     const code = error instanceof ApiError ? error.code : "unknown";
+    if (code === "not_signed_in") return <SignedOut t={t} locale={locale} title={t.app.name} />;
     return (
       <main>
         <h1>{t.library.title}</h1>

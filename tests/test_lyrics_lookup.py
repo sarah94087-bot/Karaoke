@@ -82,8 +82,9 @@ def a_song(connect: Callable[[], object]) -> Callable[..., str]:
     def _song(title: str = "אריק איינשטיין - עוף גוזל", duration: int | None = 222) -> str:
         with connect() as conn:
             row = conn.execute(
-                "insert into songs (title, source_type, status, is_playable, lyrics_status, "
-                "duration_sec) values (%s, 'file', 'processing', true, 'pending', %s) returning id",
+                "insert into songs (user_id, title, source_type, status, is_playable, "
+                "lyrics_status, duration_sec) "
+                "values ('00000000-0000-0000-0000-000000000001', %s, 'file', 'processing', true, 'pending', %s) returning id",
                 [title, duration],
             ).fetchone()
         return str(row[0])

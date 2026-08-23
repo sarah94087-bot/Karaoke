@@ -18,7 +18,7 @@ from packages.core.events import JobEvent
 from packages.core.models import Job, Song
 
 from .. import sse
-from ..deps import RunnerDep, SessionDep, SessionsDep
+from ..deps import RunnerDep, SessionDep, SessionsDep, UserDep
 from ..errors import ApiError
 
 router = APIRouter(tags=["jobs"])
@@ -72,19 +72,28 @@ def as_status(job: Job, song: Song) -> JobStatus:
     )
 
 
-async def _load(session: SessionDep, job_id: uuid.UUID) -> tuple[Job, Song]:
+async def _load(session: SessionDep, job_id: uuid.UUID, user_id: uuid.UUID) -> tuple[Job, Song]:
+    """The job and its song, if the song is this user's.
+
+    Checked through the song rather than through `jobs.user_id`: the song is
+    what ownership is recorded on since T-3.7, and two places to ask the same
+    question is one place to get a different answer. Somebody else's job is the
+    same 404 a missing one gets - see `ownership.py`.
+    """
     job = await job_service.get_job(session, job_id)
     if job is None:
         raise ApiError("job_not_found", "no such job", status_code=status.HTTP_404_NOT_FOUND)
     song = await session.get(Song, job.song_id)
     if song is None:  # pragma: no cover - the foreign key makes this unreachable
         raise ApiError("song_not_found", "the job's song is gone", status_code=404)
+    if song.user_id != user_id:
+        raise ApiError("job_not_found", "no such job", status_code=status.HTTP_404_NOT_FOUND)
     return job, song
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatus, summary="Where a job has got to")
-async def get_job(session: SessionDep, job_id: uuid.UUID) -> JobStatus:
-    job, song = await _load(session, job_id)
+async def get_job(session: SessionDep, user_id: UserDep, job_id: uuid.UUID) -> JobStatus:
+    job, song = await _load(session, job_id, user_id)
     return as_status(job, song)
 
 
@@ -93,13 +102,15 @@ async def get_job(session: SessionDep, job_id: uuid.UUID) -> JobStatus:
     response_model=JobStatus,
     summary="Run a failed job again",
 )
-async def retry_job(session: SessionDep, runner: RunnerDep, job_id: uuid.UUID) -> JobStatus:
+async def retry_job(
+    session: SessionDep, runner: RunnerDep, user_id: UserDep, job_id: uuid.UUID
+) -> JobStatus:
     """Manual on purpose.
 
     Chapter 7: no automatic retry on a GPU step, because a retry costs double
     credit. This endpoint is the user deciding to spend it.
     """
-    job, song = await _load(session, job_id)
+    job, song = await _load(session, job_id, user_id)
     if job.state != str(JobState.FAILED):
         raise ApiError(
             "job_not_retryable",
@@ -133,7 +144,11 @@ async def retry_job(session: SessionDep, runner: RunnerDep, job_id: uuid.UUID) -
     },
 )
 async def job_events(
-    request: Request, runner: RunnerDep, sessions: SessionsDep, job_id: uuid.UUID
+    request: Request,
+    runner: RunnerDep,
+    sessions: SessionsDep,
+    user_id: UserDep,
+    job_id: uuid.UUID,
 ) -> StreamingResponse:
     """D-18. The first message is always the current state, then live changes.
 
@@ -143,7 +158,11 @@ async def job_events(
     never come.
     """
     async with sessions() as session:
-        if await job_service.get_job(session, job_id) is None:
+        # Checked before a single byte of the stream: an SSE response that
+        # opened and then refused would be a 200 the client has to interpret.
+        job = await job_service.get_job(session, job_id)
+        song = await session.get(Song, job.song_id) if job is not None else None
+        if job is None or song is None or song.user_id != user_id:
             raise ApiError("job_not_found", "no such job", status_code=status.HTTP_404_NOT_FOUND)
 
     async def stream() -> AsyncIterator[str]:

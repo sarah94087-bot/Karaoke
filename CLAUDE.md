@@ -173,11 +173,12 @@ hand in both text and time.
 `T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
 the rest of phase 3 is waiting on account signups.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.5` are done —
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.7` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
-carrying the handle on its remote call and what it spent, and staged readiness
-measured end to end in the cloud configuration.
+carrying the handle on its remote call and what it spent, staged readiness
+measured end to end in the cloud configuration, accounts, and a library that is
+one person's.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
@@ -1259,4 +1260,41 @@ From `T-3.6`:
   `T-3.10` question.
 - Tokens are **ES256** (the project publishes a JWKS), so verifying them in the
   API cannot be done with `hmac` alone the way the storage signatures are.
-  That is `T-3.7`'s first decision.
+  `T-3.7` settles that.
+
+From `T-3.7`:
+
+- **`pyjwt[crypto]` is the first dependency this project has added rather than
+  hand-rolled a signature for, and the reason is the difference between the two
+  kinds of failure.** Every other signature here is HMAC - one hash, one
+  comparison - and getting it wrong makes the service refuse everything, at
+  once, loudly. ES256 is elliptic curve, where a subtly wrong verifier accepts
+  forgeries instead and says nothing at all. `tests/test_auth.py` generates real
+  EC keys and checks the refusals one at a time: expired, forged, wrong issuer,
+  wrong audience, `alg: none`, no subject.
+- **Songs have an owner, and `content_hash` is unique per owner rather than
+  globally.** Global dedup is cheaper - a song is separated once, ever - but it
+  hands the second person to upload something the *first person's row*: their
+  title, their stems, and the knowledge that somebody else has that song. At 30
+  songs a month against a 10GB bucket the saving was never the constraint.
+- **Somebody else's song is a `404`, not a `403`.** A 403 answers a question the
+  asker had no business asking. `ownership.py` is one function, used by every
+  route that names a song, because the failure this guards against is not "the
+  check is wrong" but "one route forgot".
+- Jobs are checked through their **song**, not through `jobs.user_id`: ownership
+  is recorded in one place now, and two places to ask the same question is one
+  place to get a different answer.
+- The SSE stream is refused **before it opens**. An event stream that opened and
+  then complained would be a 200 the client has to interpret.
+- `NoAuth` keeps chapter 11 true - the whole product still runs on a machine
+  with no accounts on it - and `create_app` **refuses to start** in production
+  without `SUPABASE_URL`, because a deployment with no identity provider serves
+  everybody the same library.
+- **Verified live**, which is the part the tests cannot reach: a real Supabase
+  ES256 token, verified by the API against the project's published keys. No
+  token is `401`, rubbish is `401`.
+- **The live check found the state nobody designs for**: a cookie the API no
+  longer accepts - revoked, expired, or from before a password change. The
+  server-rendered library called the API, got a 401, and drew a red error card
+  with a request id on it. Being signed out is a state, not a failure; both
+  pages now show the way in.

@@ -118,7 +118,8 @@
     "title": "My library",
     "empty": "No songs here yet.",
     "emptyHint": "Once you upload a song it will appear here with its processing state.",
-    "requestId": "Request id"
+    "requestId": "Request id",
+    "signedOut": "Sign in to see your library."
   },
   "song": {
     "originalKey": "Original key",
@@ -186,7 +187,9 @@
     "weak_password": "That password is too short. Use at least eight characters.",
     "too_many_attempts": "Too many attempts. Wait a few minutes and try again.",
     "reset_link_invalid": "That reset link is no longer valid. You can ask for a new one.",
-    "same_password": "That is the password you already have. Choose a different one."
+    "same_password": "That is the password you already have. Choose a different one.",
+    "not_signed_in": "You need to be signed in to see this.",
+    "auth_unavailable": "The accounts service is unavailable right now. Try again in a moment."
   },
   "auth": {
     "signInTitle": "Sign in",

@@ -82,6 +82,7 @@ def test_the_models_and_the_migration_agree(schema, alembic):
 
 def insert_song(conn, **overrides) -> str:
     values = {
+        "user_id": "00000000-0000-0000-0000-000000000001",
         "title": "song",
         "source_type": "file",
         "status": "pending",

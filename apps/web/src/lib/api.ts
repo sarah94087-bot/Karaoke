@@ -16,6 +16,8 @@
  * answers instantly. The container publishes on both stacks, which is why this
  * only ever bites the venv setup - the one used to develop.
  */
+import { readCookie } from "@/lib/auth";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000/api/v1";
 
 export type JobState = "queued" | "running" | "ready" | "failed";
@@ -75,11 +77,25 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Every call to the API, with whoever is signed in attached (T-3.7).
+ *
+ * `token` is passed explicitly by server components, which cannot read
+ * `document.cookie`; in the browser it is read from the cookie here so no
+ * screen has to remember. A request with no token at all is still made - the
+ * API answers 401 with a code the dictionary knows, and "sign in" is a better
+ * thing to render than a screen that pretends to be loading.
+ */
+async function request<T>(path: string, init?: RequestInit, token?: string | null): Promise<T> {
+  const bearer = token ?? (typeof document === "undefined" ? null : readCookie()?.accessToken);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
+      headers: {
+        ...init?.headers,
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      },
       // The library changes whenever a job finishes, so a cached page would show
       // a song as "processing" long after it was ready.
       cache: "no-store",
@@ -133,8 +149,8 @@ export interface UploadResult {
   job_id: string | null;
 }
 
-export function getLibrary(): Promise<Library> {
-  return request<Library>("/songs");
+export function getLibrary(token?: string | null): Promise<Library> {
+  return request<Library>("/songs", undefined, token);
 }
 
 export interface StemLink {
@@ -167,8 +183,8 @@ export interface SongDetail {
   settings: PlayerSettings;
 }
 
-export function getSong(songId: string): Promise<SongDetail> {
-  return request<SongDetail>(`/songs/${songId}`);
+export function getSong(songId: string, token?: string | null): Promise<SongDetail> {
+  return request<SongDetail>(`/songs/${songId}`, undefined, token);
 }
 
 export interface LyricWord {
@@ -225,9 +241,10 @@ export function isPending(body: SongLyrics | LyricsPending): body is LyricsPendi
 export function getLyrics(
   songId: string,
   version?: number,
+  token?: string | null,
 ): Promise<SongLyrics | LyricsPending> {
   const query = version === undefined ? "" : `?version=${version}`;
-  return request<SongLyrics | LyricsPending>(`/songs/${songId}/lyrics${query}`);
+  return request<SongLyrics | LyricsPending>(`/songs/${songId}/lyrics${query}`, undefined, token);
 }
 
 /** One line on its way back to the API. No `index`: the order is the order. */
@@ -284,8 +301,8 @@ export function saveSettings(
   });
 }
 
-export function getJob(jobId: string): Promise<JobStatus> {
-  return request<JobStatus>(`/jobs/${jobId}`);
+export function getJob(jobId: string, token?: string | null): Promise<JobStatus> {
+  return request<JobStatus>(`/jobs/${jobId}`, undefined, token);
 }
 
 export function retryJob(jobId: string): Promise<JobStatus> {

@@ -36,6 +36,7 @@ def _clean(empty_songs: None) -> None:
 async def a_song_and_job(session: AsyncSession) -> tuple[Song, Job]:
     song = Song(
         id=uuid.uuid4(),
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
         title="שיר",
         source_type=SourceType.FILE,
         status=SongStatus.PENDING,

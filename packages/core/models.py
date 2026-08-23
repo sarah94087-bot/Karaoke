@@ -64,6 +64,10 @@ class Song(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
 
+    # Whose song it is (T-3.7). No foreign key, for the same reason `jobs` has
+    # none: users live in the managed auth provider, not in this database.
+    user_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True))
+
     title: Mapped[str] = mapped_column(Text)
     artist: Mapped[str | None] = mapped_column(Text)
     duration_sec: Mapped[int | None] = mapped_column(Integer)
@@ -103,7 +107,10 @@ class Song(Base):
         # Chapter 9 caps song length at 8 minutes. Enforced in the API too, but
         # a row that violates it is a bug worth catching at the boundary.
         CheckConstraint("duration_sec IS NULL OR duration_sec <= 480", name="duration_max"),
-        UniqueConstraint("content_hash", name="uq_songs_content_hash"),
+        # Per owner, not global (T-3.7): dedup across users would hand the
+        # second person to upload a song the first person's row.
+        UniqueConstraint("user_id", "content_hash", name="uq_songs_owner_content"),
+        Index("ix_songs_user_created", "user_id", "created_at"),
     )
 
 

@@ -31,8 +31,9 @@ from packages.core.lyrics import (
 from packages.core.lyrics_lookup import lookup_lyrics
 from packages.core.models import LyricLine, Lyrics, Song
 
-from ..deps import CatalogueDep, SessionDep
+from ..deps import CatalogueDep, SessionDep, UserDep
 from ..errors import ApiError
+from ..ownership import owned_song
 
 router = APIRouter(tags=["lyrics"])
 
@@ -164,11 +165,9 @@ def _as_lyrics(song: Song, lyrics: Lyrics, versions: list[Lyrics]) -> SongLyrics
     )
 
 
-async def _song_or_404(session: SessionDep, song_id: uuid.UUID) -> Song:
-    song = await session.get(Song, song_id)
-    if song is None:
-        raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
-    return song
+async def _song_or_404(session: SessionDep, song_id: uuid.UUID, user_id: uuid.UUID) -> Song:
+    """Somebody else's song is a 404 here too - see `ownership.py`."""
+    return await owned_song(session, song_id, user_id)
 
 
 @router.get(
@@ -179,6 +178,7 @@ async def _song_or_404(session: SessionDep, song_id: uuid.UUID) -> Song:
 )
 async def read_lyrics(
     session: SessionDep,
+    user_id: UserDep,
     song_id: uuid.UUID,
     version: int | None = Query(
         default=None,
@@ -192,7 +192,7 @@ async def read_lyrics(
     200 with an empty list once it has given up. Both are states the user can be
     shown - "coming" and "none, here is the editor" - and neither is an error.
     """
-    song = await _song_or_404(session, song_id)
+    song = await _song_or_404(session, song_id, user_id)
     found = await get_lyrics(session, song_id, version)
 
     if found is None:
@@ -238,14 +238,16 @@ async def read_lyrics(
     status_code=status.HTTP_201_CREATED,
     summary="Save an edited set of lyrics as a new version",
 )
-async def write_lyrics(session: SessionDep, song_id: uuid.UUID, body: LyricsIn) -> SongLyrics:
+async def write_lyrics(
+    session: SessionDep, user_id: UserDep, song_id: uuid.UUID, body: LyricsIn
+) -> SongLyrics:
     """201, not 200: this creates a version, it does not update one.
 
     Chapter 6 is explicit that an edit never overwrites. That matters most for
     the case phase 2 exists to serve - somebody fixing timings by hand for
     twenty minutes and then wanting the machine's version back.
     """
-    song = await _song_or_404(session, song_id)
+    song = await _song_or_404(session, song_id, user_id)
 
     try:
         saved = await save_lyrics(
@@ -283,7 +285,7 @@ write_lyrics.__doc__ = (write_lyrics.__doc__ or "") + f"\n\nAt most {MAX_LINES} 
     summary="Look this song up in the open lyrics database",
 )
 async def search_lyrics(
-    session: SessionDep, catalogue: CatalogueDep, song_id: uuid.UUID
+    session: SessionDep, catalogue: CatalogueDep, user_id: UserDep, song_id: uuid.UUID
 ) -> SongLyrics:
     """Chapter 6's `reprocess`, for the one stage that costs nothing to re-run.
 
@@ -292,7 +294,7 @@ async def search_lyrics(
     lands as a new `db` version, which is why running it after somebody has
     edited by hand is safe: their version is still there, one behind.
     """
-    song = await _song_or_404(session, song_id)
+    song = await _song_or_404(session, song_id, user_id)
 
     found = await lookup_lyrics(session, song, catalogue, replace_existing=True)
     if found is None or found.lyrics is None:

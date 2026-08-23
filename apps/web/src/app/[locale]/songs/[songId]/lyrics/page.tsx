@@ -4,6 +4,7 @@ import { LyricsEditor } from "@/components/LyricsEditor";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { ApiError, type SongLyrics, getLyrics, getSong, isPending } from "@/lib/api";
+import { serverToken } from "@/lib/session-server";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,11 @@ export default async function LyricsPage({
   const version = Number.isFinite(asked) && asked > 0 ? asked : undefined;
 
   try {
-    const [song, lyrics] = await Promise.all([getSong(songId), getLyrics(songId, version)]);
+    const token = await serverToken();
+    const [song, lyrics] = await Promise.all([
+      getSong(songId, token),
+      getLyrics(songId, version, token),
+    ]);
 
     // A song still being transcribed has nothing to edit yet, and D-28 says
     // that is a normal state rather than an error: the editor opens on an empty

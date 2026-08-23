@@ -105,9 +105,14 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_TRANSCRIPTION_BACKEND", "groq")
     )
 
-    # D-16 (which managed auth provider) is undecided, so phase 1 attributes
-    # every job to one local user. Chapter 6's Bearer token replaces this; the
-    # column it fills is already there and already has no foreign key.
+    # D-16 is Supabase (T-3.6). The API verifies its tokens against the
+    # project's published keys; the URL is all it needs, and it is the same
+    # value the web app has. Empty means no auth at all, which chapter 11
+    # allows locally and `create_app` refuses in production.
+    supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
+
+    # Who a request belongs to when there is no auth configured. Chapter 11's
+    # "everything runs locally" rests on this; nothing in production does.
     dev_user_id: str = field(
         default_factory=lambda: os.getenv(
             "KARUKI_DEV_USER_ID", "00000000-0000-0000-0000-000000000001"

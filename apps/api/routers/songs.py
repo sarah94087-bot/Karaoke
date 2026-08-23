@@ -39,8 +39,9 @@ from packages.core.stems import stems_for
 from packages.providers.storage import Storage, StorageError
 
 from ..config import settings
-from ..deps import RunnerDep, SessionDep, StorageDep
+from ..deps import RunnerDep, SessionDep, StorageDep, UserDep
 from ..errors import ApiError
+from ..ownership import owned_song
 from ..runner import JobRunner
 
 router = APIRouter(tags=["songs"])
@@ -180,19 +181,22 @@ def _sha256(path: Path) -> str:
 )
 async def list_songs(
     session: SessionDep,
+    user_id: UserDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Library:
-    """Chapter 6 describes `GET /library`, which is per-user and needs D-16.
+    """Chapter 6's `GET /library`: this user's songs, newest first.
 
-    Until auth exists this returns every song, which is the same thing while
-    there is one user. The shape is the one `/library` will have, so the screen
-    that consumes it does not change when the decision lands.
+    T-1.10 built this returning every song and said so at the time - with one
+    user it was the same list, and the response shape was already the one
+    `/library` would need. T-3.7 is where the filter arrives, and the screen
+    that consumes it did not change.
     """
-    total = await session.scalar(select(func.count()).select_from(Song)) or 0
+    mine = Song.user_id == user_id
+    total = await session.scalar(select(func.count()).select_from(Song).where(mine)) or 0
     songs = list(
         await session.scalars(
-            select(Song).order_by(Song.created_at.desc()).limit(limit).offset(offset)
+            select(Song).where(mine).order_by(Song.created_at.desc()).limit(limit).offset(offset)
         )
     )
 
@@ -304,18 +308,18 @@ class SongDetail(BaseModel):
     response_model=SongDetail,
     summary="A song and its stems",
 )
-async def get_song(session: SessionDep, storage: StorageDep, song_id: uuid.UUID) -> SongDetail:
+async def get_song(
+    session: SessionDep, storage: StorageDep, user_id: UserDep, song_id: uuid.UUID
+) -> SongDetail:
     """Chapter 6 hands out *signed* URLs here, and since T-3.1 that is what
     these are: a link that carries its own authority and stops working after
     `KARUKI_SIGNED_URL_TTL`. The player is unchanged by which backend signed it
     - an S3 presigned URL is absolute, a local one is root-relative, and both
     are "fetch what you are given"."""
-    song = await session.get(Song, song_id)
-    if song is None:
-        raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
+    song = await owned_song(session, song_id, user_id)
 
     found = await stems_for(session, song.id)
-    saved = await get_settings(session, uuid.UUID(settings.dev_user_id), song.id)
+    saved = await get_settings(session, user_id, song.id)
     order = {str(kind): index for index, kind in enumerate(StemKind)}
     return SongDetail(
         id=song.id,
@@ -346,7 +350,7 @@ async def get_song(session: SessionDep, storage: StorageDep, song_id: uuid.UUID)
     summary="Save the player settings for a song",
 )
 async def put_settings(
-    session: SessionDep, song_id: uuid.UUID, body: PlayerSettings
+    session: SessionDep, user_id: UserDep, song_id: uuid.UUID, body: PlayerSettings
 ) -> PlayerSettings:
     """Chapter 6 calls this `PUT /library/{song_id}/settings`; that path is
     per-user and needs D-16, and the body is the same either way.
@@ -355,12 +359,11 @@ async def put_settings(
     in flight at once - a fader moved while a key change is still posting - and
     a read-modify-write would let the older one win.
     """
-    if await session.get(Song, song_id) is None:
-        raise ApiError("song_not_found", "no such song", status_code=status.HTTP_404_NOT_FOUND)
+    await owned_song(session, song_id, user_id)
 
     saved = await save_settings(
         session,
-        uuid.UUID(settings.dev_user_id),
+        user_id,
         song_id,
         key_shift=body.key_shift,
         tempo_ratio=body.tempo_ratio,
@@ -381,7 +384,7 @@ UPLOAD_KEY = re.compile(r"^uploads/[0-9a-f-]{36}/original(\.[a-z0-9]{1,5})$")
     response_model=UploadTicket,
     summary="Where to send the file",
 )
-async def upload_url(storage: StorageDep, body: UploadUrlRequest) -> UploadTicket:
+async def upload_url(storage: StorageDep, user_id: UserDep, body: UploadUrlRequest) -> UploadTicket:
     """Chapter 6: the file goes straight to storage, not through the API.
 
     What this hands out is narrow on purpose - one key, one method, one hour.
@@ -424,6 +427,7 @@ async def create_song(
     session: SessionDep,
     storage: StorageDep,
     runner: RunnerDep,
+    user_id: UserDep,
     body: SongFromUpload,
 ) -> SongCreated:
     """The second half of the direct upload, and chapter 6's `POST /songs`.
@@ -461,6 +465,7 @@ async def create_song(
             runner,
             response,
             original,
+            user_id=user_id,
             filename=body.filename,
             # From the key we issued, not from the file the backend handed back.
             suffix=Path(body.upload_key).suffix,
@@ -486,6 +491,7 @@ async def upload_song(
     session: SessionDep,
     storage: StorageDep,
     runner: RunnerDep,
+    user_id: UserDep,
     file: Annotated[UploadFile, File(description="Any common audio format.")],
 ) -> SongCreated:
     suffix = Path(file.filename or "").suffix.lower()
@@ -497,7 +503,14 @@ async def upload_song(
         await _spool(file, original, settings.max_upload_bytes)
 
         return await _ingest(
-            session, storage, runner, response, original, filename=file.filename, suffix=suffix
+            session,
+            storage,
+            runner,
+            response,
+            original,
+            user_id=user_id,
+            filename=file.filename,
+            suffix=suffix,
         )
 
 
@@ -508,6 +521,7 @@ async def _ingest(
     response: Response,
     original: Path,
     *,
+    user_id: uuid.UUID,
     filename: str | None,
     suffix: str,
 ) -> SongCreated:
@@ -531,7 +545,12 @@ async def _ingest(
         # as m4a is the same song, and re-separating it would burn GPU credit to
         # produce identical stems.
         content_hash = _sha256(normalised)
-        existing = await session.scalar(select(Song).where(Song.content_hash == content_hash))
+        # Scoped to the owner (T-3.7). Dedup across users would hand whoever
+        # uploads a song second the first person's row - their title, their
+        # stems, and the knowledge that somebody else has that song.
+        existing = await session.scalar(
+            select(Song).where(Song.content_hash == content_hash, Song.user_id == user_id)
+        )
         if existing is not None:
             # Nothing was created, so 201 would be a lie the client may act on.
             response.status_code = status.HTTP_200_OK
@@ -539,6 +558,7 @@ async def _ingest(
 
         song = Song(
             id=uuid.uuid4(),
+            user_id=user_id,
             title=_title_from(filename),
             source_type=SourceType.FILE,
             source_ref=filename,
@@ -557,7 +577,7 @@ async def _ingest(
         # immediately. The job is queued inside the transaction and only
         # scheduled once it is committed - a task that raced the commit would
         # look up a job that is not there yet.
-        job = await job_service.create_job(session, song, uuid.UUID(settings.dev_user_id))
+        job = await job_service.create_job(session, song, user_id)
         await session.commit()
 
     runner.schedule(job.id)

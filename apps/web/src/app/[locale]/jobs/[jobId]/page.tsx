@@ -4,6 +4,7 @@ import { JobProgress } from "@/components/JobProgress";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { type JobStatus, getJob } from "@/lib/api";
+import { serverToken } from "@/lib/session-server";
 
 /**
  * The progress screen.
@@ -27,7 +28,7 @@ export default async function JobPage({
 
   let initial: JobStatus | null = null;
   try {
-    initial = await getJob(jobId);
+    initial = await getJob(jobId, await serverToken());
   } catch {
     // The client will try again over SSE, and show its own error if that fails
     // too. A server-side failure here should not blank the page.

@@ -7,6 +7,7 @@ build an app with a temporary storage root and no database and still exercise
 the parts that do not need one.
 """
 
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from packages.providers.lyrics_catalogue import LyricsCatalogue, NoCatalogue
 from packages.providers.storage import Storage
 
+from .auth import AuthError, Verifier, bearer_token
 from .errors import ApiError
 from .runner import JobRunner
 
@@ -70,7 +72,27 @@ def get_runner(request: Request) -> JobRunner:
     return runner
 
 
+def current_user(request: Request) -> uuid.UUID:
+    """Who is asking, or a 401.
+
+    Every song-scoped endpoint takes this. There is no "optional user" variant
+    on purpose: an endpoint that works with or without one is an endpoint whose
+    author has not decided what it does, and T-3.7 is exactly the task where
+    that has to be decided.
+    """
+    verifier: Verifier | None = getattr(request.app.state, "verifier", None)
+    if verifier is None:  # pragma: no cover - a misconfigured app
+        raise ApiError("auth_unavailable", "authentication is not configured", status_code=503)
+    try:
+        return verifier.user_id(bearer_token(request.headers.get("Authorization")))
+    except AuthError as exc:
+        # One code for every reason. Telling a caller whether a token was
+        # expired, forged or simply absent is telling them how to get closer.
+        raise ApiError("not_signed_in", str(exc), status_code=401) from exc
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+UserDep = Annotated[uuid.UUID, Depends(current_user)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
 RunnerDep = Annotated[JobRunner, Depends(get_runner)]
 SessionsDep = Annotated[async_sessionmaker[AsyncSession], Depends(get_sessions)]

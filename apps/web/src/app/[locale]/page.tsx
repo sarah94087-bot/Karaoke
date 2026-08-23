@@ -5,6 +5,8 @@ import { SongRow } from "@/components/SongRow";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { ApiError, getLibrary } from "@/lib/api";
+import { SignedOut } from "@/components/SignedOut";
+import { serverToken } from "@/lib/session-server";
 
 /**
  * The library - chapter 8's first screen, and the app's home.
@@ -21,8 +23,14 @@ export default async function Library({ params }: { params: Promise<{ locale: st
   if (!isLocale(locale)) notFound();
   const t = await getDictionary(locale);
 
+  const token = await serverToken();
+  // Not an error state: nobody is signed in yet, and the honest thing to show
+  // is the way in rather than a library that would be empty for a reason the
+  // visitor cannot see.
+  if (token === null) return <SignedOut t={t} locale={locale} title={t.library.title} />;
+
   try {
-    const library = await getLibrary();
+    const library = await getLibrary(token);
 
     return (
       <main>
@@ -52,6 +60,13 @@ export default async function Library({ params }: { params: Promise<{ locale: st
     // The API being down is a normal thing for a screen to survive, not a
     // reason to show a stack trace. The code carries through to Hebrew.
     const code = error instanceof ApiError ? error.code : "unknown";
+    // A cookie the API no longer accepts - revoked, expired, or from before a
+    // password change - is being signed out, not a failure. It arrives here
+    // rather than above because the cookie exists; only the API can say the
+    // token behind it is dead.
+    if (code === "not_signed_in") {
+      return <SignedOut t={t} locale={locale} title={t.library.title} />;
+    }
     const message = t.errors[code as keyof typeof t.errors] ?? t.errors.unknown;
 
     return (

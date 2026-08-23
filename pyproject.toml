@@ -23,6 +23,12 @@ api = [
     # The client for the deployed GPU function (T-0.3). Small; the model and
     # the torch stack live on the remote side, not here.
     "modal>=1.5",
+    # T-3.7, and the one place this project does *not* hand-roll a signature.
+    # Every other one here is HMAC - one hash, and getting it wrong shows up as
+    # "the service refuses everything". Supabase signs its tokens with ES256,
+    # elliptic-curve, where a subtly wrong verifier accepts forgeries instead
+    # and says nothing. That is not a thing to write yourself.
+    "pyjwt[crypto]>=2.9",
 ]
 # Local CPU separation (chapter 10's local environment, and chapter 11's escape
 # route). Deliberately NOT in `api`: torch and demucs are about 2GB, which would

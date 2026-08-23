@@ -131,6 +131,7 @@ async def ingested(
 ) -> tuple[Song, Job]:
     song = Song(
         id=uuid.uuid4(),
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
         title="שיר",
         source_type=SourceType.FILE,
         status=SongStatus.PENDING,

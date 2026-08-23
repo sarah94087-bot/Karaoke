@@ -78,6 +78,7 @@ def _clean(empty_songs: None) -> None:
 def a_song() -> Song:
     return Song(
         id=uuid.uuid4(),
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
         title="שיר לדוגמה",
         source_type=SourceType.FILE,
         status=SongStatus.PROCESSING,

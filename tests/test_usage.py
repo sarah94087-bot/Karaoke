@@ -37,6 +37,7 @@ async def a_job(
 ) -> Job:
     song = Song(
         id=uuid.uuid4(),
+        user_id=user,
         title="שיר",
         source_type=SourceType.FILE,
         content_hash=uuid.uuid4().hex,
