@@ -1,0 +1,80 @@
+# The API service (T-3.10, chapter 14 step 7).
+#
+# In the repository rather than in the console for the reason `bucket_cors.py`
+# is: a configuration made of clicks is one nobody can reproduce, review, or
+# recover after somebody changes it at midnight. Render reads this file through
+# **New > Blueprint**; changing it and pushing changes the deployment.
+#
+# The web app is *not* here. Chapter 14 is explicit that the free hours fit one
+# continuously running service and not two, and T-3.11's keep-alive spends them
+# on this one; Next.js goes to Vercel, which is its own home and does not sleep.
+#
+# What is deliberately absent: every secret. Anything marked `sync: false` is
+# asked for once in the dashboard and stored there, which is chapter 14's rule
+# that `.env.example` carries names and the platform carries values.
+
+services:
+  - type: web
+    name: karuki-api
+    runtime: docker
+    dockerfilePath: ./infra/docker/Dockerfile
+    # The build context is the repository root: the image needs `packages/` as
+    # well as `apps/api/` (T-1.3).
+    dockerContext: .
+    plan: free
+    # Frankfurt: the same city as the Postgres (T-3.6) and one country from the
+    # bucket (T-3.1). The database round trip is on every request and is the one
+    # that matters here.
+    region: frankfurt
+    healthCheckPath: /system/health
+    # Chapter 9 budgets exactly one instance, and D-25 depends on it: jobs run
+    # inside this process and the in-process event bus (T-1.8) assumes there is
+    # only one of them. Two would each run their own jobs and neither would see
+    # the other's SSE events.
+    numInstances: 1
+    envVars:
+      - key: KARUKI_ENV
+        value: production
+      # Postgres. Named DATABASE_URL here and SUPABASE_DATABASE_URL locally on
+      # purpose (T-3.6): the local name belongs to the compose Postgres, and the
+      # test suite drops every table in whatever DATABASE_URL points at.
+      - key: DATABASE_URL
+        sync: false
+      # Identity (T-3.7). Without it `create_app` refuses to start rather than
+      # serving everybody the same library.
+      - key: SUPABASE_URL
+        sync: false
+      # Object storage (T-3.1, T-3.2).
+      - key: KARUKI_STORAGE_BACKEND
+        value: s3
+      - key: KARUKI_S3_ENDPOINT
+        sync: false
+      - key: KARUKI_S3_BUCKET
+        sync: false
+      - key: KARUKI_S3_REGION
+        sync: false
+      - key: KARUKI_S3_KEY_ID
+        sync: false
+      - key: KARUKI_S3_SECRET
+        sync: false
+      # Signed links. Generated once by Render and kept: unset would mean a new
+      # random secret per process (T-3.1), so every link handed out before a
+      # restart would stop working.
+      - key: KARUKI_SIGNING_SECRET
+        generateValue: true
+      # Separation on the rented GPU (T-3.3). The image has no torch by design,
+      # so `local` here would mean a service that cannot separate at all.
+      - key: KARUKI_SEPARATION_BACKEND
+        value: modal
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+      # Transcription (T-2.3). Missing is "unavailable", not "failed".
+      - key: GROQ_API_KEY
+        sync: false
+      # The web app's address, and nothing else - chapter 14: "the frontend
+      # address only, not an asterisk". Set once Vercel has given one, and the
+      # same value goes into `scripts/bucket_cors.py` for the bucket.
+      - key: KARUKI_CORS_ORIGINS
+        sync: false

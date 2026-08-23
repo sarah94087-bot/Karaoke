@@ -23,6 +23,14 @@ api = [
     # The client for the deployed GPU function (T-0.3). Small; the model and
     # the torch stack live on the remote side, not here.
     "modal>=1.5",
+    # T-1.15's tempo and key detection, which the pipeline imports on every job.
+    # It is in this group and not only in `separation` because the API image
+    # runs the analysis itself - the *separation* is what moved to the GPU. The
+    # reason that task refused librosa was exactly this: numpy is 20MB and ships
+    # anywhere, scipy and numba are hundreds and do not. Missing here was a
+    # deployment that crashed on its first import and worked on every developer
+    # machine, because a venv built for local separation already has it.
+    "numpy",
     # T-3.7, and the one place this project does *not* hand-roll a signature.
     # Every other one here is HMAC - one hash, and getting it wrong shows up as
     # "the service refuses everything". Supabase signs its tokens with ES256,

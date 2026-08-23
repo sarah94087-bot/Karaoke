@@ -47,11 +47,27 @@ RUN mkdir -p /app/var/storage \
     && chown -R karuki:karuki /app
 USER karuki
 
+# The port is the platform's to choose, and chapter 14 names assuming otherwise
+# as one of the three mistakes that cost an evening: a server bound to a fixed
+# port fails to deploy with no clear explanation. 8000 is the local default, for
+# compose and for `docker run` by hand.
+ENV PORT=8000
 EXPOSE 8000
 
 # The keep-alive path, deliberately the unprefixed one: it does not move when
 # the API version prefix does. No curl in the slim image, so urllib it is.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/system/health', timeout=3)"
+    CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/system/health', timeout=3)"
 
-CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Migrations, then the server, in one command.
+#
+# Chapter 10 asks for migrations as a *separate* deploy step ahead of the new
+# code, and that is right - but Render's pre-deploy hook is a paid feature, and
+# T-0.6's rule is that nothing in this project goes behind a payment method.
+# Running them in the start command is the honest substitute while chapter 9
+# budgets a single instance: there is no second container to race, and a failed
+# migration stops the server from starting rather than letting it serve against
+# a schema it does not understand.
+#
+# `sh -c` rather than the exec form, because $PORT has to be expanded.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT}"]
