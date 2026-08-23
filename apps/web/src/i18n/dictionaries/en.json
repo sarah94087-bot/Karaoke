@@ -132,7 +132,8 @@
       "queued": "Queued",
       "running": "Processing",
       "ready": "Ready",
-      "failed": "Failed"
+      "failed": "Failed",
+      "archived": "files removed"
     },
     "step": {
       "ingesting": "Reading the file",

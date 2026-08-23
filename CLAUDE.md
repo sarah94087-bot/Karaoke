@@ -78,6 +78,14 @@ in `.env`; Next reads env files from its own directory, not the repo root):
 .venv\Scripts\python.exe scripts\web_env.py
 ```
 
+Remove the audio of songs nobody has played for six months (chapter 9). The
+dry run is the default:
+
+```
+.venv\Scripts\python.exe scriptseap.py
+.venv\Scripts\python.exe scriptseap.py --apply
+```
+
 Apply the bucket's CORS rule (needed once per bucket, and again when a
 deployment adds its own origin):
 
@@ -173,12 +181,13 @@ hand in both text and time.
 `T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
 the rest of phase 3 is waiting on account signups.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.8` are done —
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.9` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
 carrying the handle on its remote call and what it spent, staged readiness
 measured end to end in the cloud configuration, accounts, a library that is one
-person's, and chapter 9's limits with the screen that shows them.
+person's, chapter 9's limits with the screen that shows them, and the audio of
+songs nobody sings any more removed on a schedule.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:

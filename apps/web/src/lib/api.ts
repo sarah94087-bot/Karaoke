@@ -43,7 +43,7 @@ export interface LibrarySong {
   title: string;
   artist: string | null;
   duration_sec: number | null;
-  status: "pending" | "processing" | "ready" | "failed";
+  status: "pending" | "processing" | "ready" | "failed" | "archived";
   /**
    * D-28. Separate from `status` on purpose: a song can be playable while it is
    * still being processed, and that is the whole point of staged readiness.

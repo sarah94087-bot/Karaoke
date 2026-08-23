@@ -30,6 +30,9 @@ class SongStatus(StrEnum):
     PROCESSING = "processing"
     READY = "ready"
     FAILED = "failed"
+    # Chapter 9's retention: the audio was removed after six months with nobody
+    # playing it, and everything else about the song was kept (T-3.9).
+    ARCHIVED = "archived"
 
 
 class LyricsStatus(StrEnum):

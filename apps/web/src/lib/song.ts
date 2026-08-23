@@ -32,6 +32,10 @@ export function formatDuration(seconds: number | null): string | null {
  * something that "processing" does not.
  */
 export function stateLabel(song: SongState, t: Dictionary): string {
+  // Chapter 9 removed the audio after six months with nobody playing it. The
+  // row is still real - the words, the key, the settings - so the library keeps
+  // showing it, and this is the one line that says what happened to it (T-3.9).
+  if (song.status === "archived") return t.job.state.archived;
   if (song.job === null) return t.job.state[song.status === "ready" ? "ready" : "queued"];
   if (song.job.state === "running" && song.job.current_step !== null) {
     return t.job.step[song.job.current_step];

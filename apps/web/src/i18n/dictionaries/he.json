@@ -132,7 +132,8 @@
       "queued": "ממתין בתור",
       "running": "בעיבוד",
       "ready": "מוכן",
-      "failed": "נכשל"
+      "failed": "נכשל",
+      "archived": "הקבצים הוסרו"
     },
     "step": {
       "ingesting": "קולט את הקובץ",

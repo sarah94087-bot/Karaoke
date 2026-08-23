@@ -78,3 +78,23 @@ test("a code with no translation still produces a sentence", () => {
 test("a song that has not failed has no error text", () => {
   assert.equal(errorText(song({}, { state: "running" }), t), null);
 });
+
+test("a song whose audio was removed after six months says so", () => {
+  /* T-3.9. Chapter 9 keeps the row - the words somebody corrected, the key
+     measured for them, the settings they left it in - and removes only the
+     audio. The library still lists it, so it needs a line that explains why
+     there is nothing to press. */
+  const archived = song({ status: "archived", is_playable: false });
+
+  assert.equal(stateLabel(archived, t), t.job.state.archived);
+});
+
+test("an archived song does not read as ready or as queued", () => {
+  /* Both would be wrong in the way that wastes somebody's time: one invites a
+     click that cannot work, the other suggests waiting for something that is
+     not coming. */
+  const label = stateLabel(song({ status: "archived" }), t);
+
+  assert.notEqual(label, t.job.state.ready);
+  assert.notEqual(label, t.job.state.queued);
+});
