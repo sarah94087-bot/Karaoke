@@ -28,6 +28,7 @@ and alignment, and the same reasoning applies: a song whose tempo we could not
 measure is still a song you can sing.
 """
 
+import asyncio
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +64,11 @@ async def analyse_song(session: AsyncSession, storage: Storage, song: Song) -> A
     four stems must not fail because a tempo could not be found.
     """
     try:
-        result = analyse_song_audio(storage, song)
+        # In a thread: it opens the normalised audio - a download on the object
+        # store - and then spends a couple of seconds in numpy. Both of those on
+        # the event loop stop every other request in the process, which on one
+        # instance is the whole service (T-3.5).
+        result = await asyncio.to_thread(analyse_song_audio, storage, song)
     except Exception:
         log.exception("analysis failed for song %s", song.id)
         return None

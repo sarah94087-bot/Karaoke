@@ -8,6 +8,7 @@ row rather than escaping as a traceback.
 """
 
 import tempfile
+import threading
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -15,9 +16,10 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from packages.core import jobs
+from packages.core import jobs, pipeline
 from packages.core.db import create_engine, session_factory
 from packages.core.enums import JobState, JobStep, LyricsStatus, SongStatus, SourceType
+from packages.core.events import EventBus
 from packages.core.lyrics import get_lyrics
 from packages.core.models import Job, Song
 from packages.core.pipeline import run_job
@@ -151,6 +153,91 @@ async def test_the_song_becomes_playable_before_the_job_finishes(sessions, stora
     assert song.is_playable is True
     assert jobs.STEP_PROGRESS[jobs.PLAYABLE_AFTER] < 100, (
         "playable must be reachable before the bar is full, or D-28 buys nothing"
+    )
+
+
+async def test_nothing_optional_runs_before_the_song_is_playable(
+    sessions, storage, tmp_path, monkeypatch
+):
+    """T-3.5, and a regression that cost nothing to make and nothing to notice.
+
+    Key and tempo detection used to run *before* the playable mark, behind a
+    comment saying it did not delay it. On disk that was nearly true - two
+    seconds of numpy. With the object store the analysis opens the normalised
+    audio, which for a four-minute song is a 47MB download, and the user waited
+    through it with four finished stems already in the bucket.
+
+    So: by the time anything optional runs, the song is already playable.
+    """
+    seen: list[bool] = []
+    real = pipeline.analyse_song
+
+    async def watching(session, storage, song):
+        seen.append(song.is_playable)
+        return await real(session, storage, song)
+
+    monkeypatch.setattr(pipeline, "analyse_song", watching)
+
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+
+        await run_job(session, storage, StubSeparator(), job, song)
+
+    assert seen == [True], "the analysis ran while the user was still waiting"
+
+
+async def test_the_watchers_hear_playable_before_ready(sessions, storage, tmp_path):
+    """Chapter 6 names the order, and the SSE client relies on it: `playable` is
+    the event that lights the button, and it has to arrive first."""
+    bus = EventBus()
+    heard: list[str] = []
+
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+        async with bus.subscribe(job.id) as queue:
+            await run_job(session, storage, StubSeparator(), job, song, bus=bus)
+            while not queue.empty():
+                heard.append(queue.get_nowait().type)
+
+    assert "playable" in heard, "nothing told the client it could start singing"
+    assert heard.index("playable") < heard.index("ready")
+    # And something after it, so a client that reads the song again finds the
+    # key and tempo the analysis has just written.
+    assert heard[heard.index("playable") + 1] == "progress"
+
+
+async def test_the_event_loop_is_never_the_one_reading_storage(sessions, storage, tmp_path):
+    """T-3.5, and the measurement that found it.
+
+    On disk `local_path` is free. On the object store it is a download - 47MB of
+    normalised wav for a four-minute song - and doing that on the event loop
+    stops everything else in the process. It was measured: the SSE stream sent
+    its first message **39.5 seconds** after the job started, because the mix
+    transcription fetched its audio inline. Chapter 9 budgets one instance, so
+    "everything else" is the whole service, including the keep-alive ping that
+    decides whether the platform thinks it is healthy.
+
+    The rule is the one T-1.7 already wrote down for separation, now applied to
+    storage: reads happen in a worker thread.
+    """
+    main = threading.current_thread()
+    read_on: list[str] = []
+
+    class Watching(LocalStorage):
+        def local_path(self, key: str) -> Path:
+            read_on.append("loop" if threading.current_thread() is main else "thread")
+            return super().local_path(key)
+
+    watched = Watching(storage.root)
+
+    async with sessions() as session:
+        song, job = await ingested(session, watched, tmp_path)
+
+        await run_job(session, watched, StubSeparator(), job, song)
+
+    assert read_on, "nothing read storage at all; the test is not exercising the path"
+    assert "loop" not in read_on, (
+        f"storage was read on the event loop: {read_on} - on the object store that is a download"
     )
 
 

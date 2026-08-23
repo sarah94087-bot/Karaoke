@@ -163,10 +163,11 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.4` are done —
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.5` are done —
 object storage with expiring links, uploads that go straight to the bucket,
-separation on a rented GPU that reads and writes the bucket itself, and every
-job carrying the handle on its remote call and what it spent.
+separation on a rented GPU that reads and writes the bucket itself, every job
+carrying the handle on its remote call and what it spent, and staged readiness
+measured end to end in the cloud configuration.
 
 Docker Desktop is installed as of 2026-08-18, but it puts `docker` on the
 machine PATH without refreshing an already-open shell. If `docker` is "not
@@ -1089,5 +1090,44 @@ From `T-3.4`:
   that run's result back afterwards. A deliberate failure — a source link the
   GPU cannot read — came back as `GET the source audio: 401` with no stems and
   **0.38s billed**, which is the number the pipeline now keeps.
+
+From `T-3.5`:
+
+- **D-28 measured in the cloud configuration, which is the point of the task**:
+  on a real 4:30 song, `playable` at **19.3s** and `ready` at **112.4s** — 93
+  seconds of singing before the words arrive. The staged part of chapter 7 was
+  built in phase 1 and phase 2; what T-3.5 did was check it still holds when the
+  work happens on a rented GPU and the audio lives in a bucket, and it found two
+  things that it did not.
+- **The analysis ran before the playable mark**, behind a comment claiming it
+  did not delay it. On disk that was nearly true — two seconds of numpy. With
+  the object store it opens the normalised audio, which for four minutes is a
+  47MB download, and the user waited through it with four finished stems already
+  in the bucket. Nothing failed; the singing just started later for no reason.
+  Playable is now marked and announced first, and the analysis follows.
+- **Then the same fact one level down: the event loop was doing the downloading.**
+  The mix transcription fetched its audio inline before handing the HTTP call to
+  a thread, so `storage.local_path` — free on disk, a 47MB download on B2 — ran
+  on the loop. Measured: the SSE stream sent its first message **39.5 seconds**
+  after the job started, and for that whole time nothing else in the process
+  could answer, including `/system/health`. Chapter 9 budgets one instance, so
+  that is the whole service, and T-1.7 had already written the rule down for
+  separation. It now covers storage: every read happens in a worker thread.
+  After the fix the same run sends its snapshot at **0.0s**, and 38 keep-alive
+  pings during the job answered in **0.05s at worst, none failed**.
+  `tests/test_pipeline.py` asserts no `local_path` call happens on the loop
+  thread, and that test was confirmed to fail when the analysis is moved back.
+- **The player has to be told, not just unblocked.** Key and tempo were rendered
+  by the server component, so a user who opened at the playable moment would
+  never see them: they are measured after that page is built. `SongFacts.tsx`
+  fetches them itself, at the same slow cadence the lyrics use, and keeps **only
+  those two fields** — a refetch also brings freshly signed stem URLs, and
+  handing those to the player would rebuild the audio graph and stop the music
+  mid-song.
+- Worth knowing, not fixed: the normalised wav is downloaded **twice** in the
+  cloud configuration — once by the mix transcription and once by the analysis,
+  because the per-process cache only fills when the first one finishes. Both are
+  after `playable`, so nobody waits on them; a per-key lock in `S3Storage` is the
+  fix if the bandwidth ever matters.
 
 `D-15`/`D-16` (database and auth) are still open.

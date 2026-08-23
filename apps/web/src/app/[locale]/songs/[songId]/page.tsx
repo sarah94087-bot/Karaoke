@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Player } from "@/components/Player";
+import { SongFacts } from "@/components/SongFacts";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { ApiError, getLyrics, getSong, isPending } from "@/lib/api";
@@ -47,26 +48,11 @@ export default async function SongPage({
         {/*
           T-1.15: measured during processing and stored on the song. Shown next
           to the controls that change them, so "+2 from D" is readable as one
-          thought rather than two.
+          thought rather than two. A client component since T-3.5, because the
+          measurement now happens *after* the player opens and these numbers
+          have to arrive on their own.
         */}
-        {song.original_key !== null || song.bpm !== null ? (
-          <dl className="song-facts">
-            {song.original_key !== null ? (
-              <div>
-                <dt>{t.song.originalKey}</dt>
-                <dd className="fact-value">{song.original_key}</dd>
-              </div>
-            ) : null}
-            {song.bpm !== null ? (
-              <div>
-                <dt>{t.song.bpm}</dt>
-                <dd className="fact-value">
-                  {Math.round(song.bpm)} <span className="fact-unit">{t.song.bpmUnit}</span>
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-        ) : null}
+        <SongFacts song={song} t={t} />
         <Player
           song={song}
           lyrics={lyrics === null || isPending(lyrics) ? null : lyrics.lines}

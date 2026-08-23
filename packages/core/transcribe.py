@@ -20,6 +20,7 @@ not delete words we already have.
 the user sees, `vocals_asr` once the real one lands.
 """
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -57,6 +58,13 @@ def mix_audio(storage: Storage, song: Song) -> Path | None:
 
     That is the whole point of transcribing it: it is ready before the
     separation has started, so the run costs no wall-clock time at all.
+
+    **Blocking, and on the object store expensively so** - `local_path` there is
+    a download of the whole normalised wav, 47MB for a four-minute song. Call it
+    from a worker thread, never from the event loop; T-3.5 measured 39.5 seconds
+    of a frozen API when this ran inline, which is long enough for a keep-alive
+    ping to time out and for the platform to call the service unhealthy while it
+    is working perfectly.
     """
     key = normalised_key(song.id)
     if not storage.exists(key):
@@ -65,14 +73,23 @@ def mix_audio(storage: Storage, song: Song) -> Path | None:
 
 
 async def vocals_audio(session: AsyncSession, storage: Storage, song: Song) -> Path | None:
-    """The separated vocals, once T-1.6 has written them."""
+    """The separated vocals, once T-1.6 has written them.
+
+    The database read is on the loop and the *fetch* is not: on the object store
+    that fetch is a download, and a download on the event loop stops every other
+    request in the process (T-3.5).
+    """
     for stem in await stems_for(session, song.id):
         if stem.kind == StemKind.VOCALS:
-            try:
-                return storage.local_path(stem.storage_key)
-            except StorageError:
-                return None
+            return await asyncio.to_thread(_fetch, storage, stem.storage_key)
     return None
+
+
+def _fetch(storage: Storage, key: str) -> Path | None:
+    try:
+        return storage.local_path(key)
+    except StorageError:
+        return None
 
 
 def transcribe(

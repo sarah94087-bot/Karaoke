@@ -153,12 +153,20 @@ async def _needs_words(session: AsyncSession, song: Song) -> bool:
 def _start_mix_transcription(
     storage: Storage, song: Song, transcriber: Transcriber
 ) -> asyncio.Task[Transcript | None] | None:
-    audio = mix_audio(storage, song)
-    if audio is None:  # pragma: no cover - _ingest has already checked this
-        return None
-    # The HTTP call blocks, so it goes to a thread; the task only ever returns a
-    # value, and never touches the session - which is not safe to share.
-    return asyncio.create_task(asyncio.to_thread(transcribe, transcriber, audio))
+    def fetch_and_transcribe() -> Transcript | None:
+        # Both halves are in the thread on purpose. The HTTP call to the
+        # transcription service blocks, and so does getting the audio: on the
+        # object store `mix_audio` downloads the whole normalised wav. T-3.5
+        # measured that download holding the event loop for 39.5 seconds, during
+        # which the SSE stream sent nothing and /system/health could not answer.
+        audio = mix_audio(storage, song)
+        if audio is None:  # pragma: no cover - _ingest has already checked this
+            return None
+        return transcribe(transcriber, audio)
+
+    # The task only ever returns a value and never touches the session, which is
+    # not safe to share.
+    return asyncio.create_task(asyncio.to_thread(fetch_and_transcribe))
 
 
 async def _transcribe(
@@ -330,19 +338,28 @@ async def _separate(
     announce(bus, job, song, "progress")
     await record_stems(session, song, result)
 
-    # Tempo and key. Deliberately not its own step: chapter 7's pipeline does
-    # not have one, it takes about two seconds, and it cannot fail the job. It
-    # runs here rather than during ingest so that it does not delay the moment
-    # the song becomes playable.
-    await analyse_song(session, storage, song)
-
-    # D-28: four stems on disk is everything the player needs. The lyrics can
+    # D-28: four stems in storage is everything the player needs. The lyrics can
     # keep the user waiting; the singing does not have to.
     await jobs.mark_playable(session, job, song)
     await session.commit()
     # Chapter 6 names this event specifically: it must arrive before `ready`,
     # because it is the moment the user is allowed to start singing.
     announce(bus, job, song, "playable")
+
+    # Tempo and key, *after* the song is playable and not before (T-3.5).
+    #
+    # This used to run first, with a comment claiming it did not delay the
+    # playable moment. On disk that was nearly true - two seconds of numpy. With
+    # the object store it stopped being true at all: the analysis opens the
+    # normalised audio, which for a four-minute song is a 47MB download, and the
+    # user was waiting through it with four finished stems already sitting in
+    # the bucket. Nothing failed; the singing just started later for no reason.
+    #
+    # It still cannot fail the job, and it is still not a JobStep: chapter 7 has
+    # no step for it. The player picks the numbers up on its next poll.
+    await analyse_song(session, storage, song)
+    await session.commit()
+    announce(bus, job, song, "progress")
 
 
 async def _save_call_id(session: AsyncSession, job: Job, call_id: str) -> None:
