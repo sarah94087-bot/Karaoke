@@ -1408,3 +1408,12 @@ From `T-3.10`:
   its own task, not part of a deployment.
 - Render's free instance **sleeps**: a cold `/system/health` took **32.7s**
   against 0.5s warm. That is `T-3.11`, measured rather than assumed.
+- **Both fixes were then checked against the deployed services, not only in
+  tests.** With the deploy live, `GET /rest/v1/alembic_version` with the anon
+  key answers `[]` where it had answered the revision, and a song uploaded from
+  the public address came back with **two lyric versions - `mix_asr` v1 and
+  `vocals_asr` v2, T-2.4's shape exactly** - and its words on the player. The
+  transcription fix was also measured directly against B2 and Groq: the
+  downloaded copy is now `0cd5ec1db3789b12.mp3` rather than
+  `0cd5ec1db3789b12`, and the same stem that had been answered with a `400`
+  came back **Hebrew, 5 segments, 29 words, in 4.2s**.
