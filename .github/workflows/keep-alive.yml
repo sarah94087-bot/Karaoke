@@ -17,6 +17,21 @@
 # that one path. `infra/github/` stays for anything that is *about* GitHub but
 # not run by it.
 #
+# **This is the backup, not the keep-alive.** Measured on the day it landed:
+# between 13:42 and 15:03 UTC, with the schedule below asking for a ping every
+# five minutes, GitHub fired **one** scheduled run - at 14:25, 43 minutes after
+# the workflow was registered - and none in the 38 minutes after it. Its own
+# status page reported Actions as degraded at the time, and the same repository
+# ran a `push`-triggered job in **6 seconds**, so the runners were fine and the
+# scheduler was not. Render sleeps after 15 minutes; a knock every 40-odd is
+# not a keep-alive, it is the appearance of one.
+#
+# The real one is a cron-job.org job (free, no card, minute resolution) asking
+# for the same URL every five minutes, and it is what the measurement in
+# CLAUDE.md was taken against. This file stays because it costs nothing, runs
+# somewhere else entirely, and would catch the day that account disappears -
+# but nothing should depend on it alone.
+#
 # Two things worth knowing before trusting it:
 #
 # - **GitHub's schedule is best-effort.** Runs are queued, not guaranteed on

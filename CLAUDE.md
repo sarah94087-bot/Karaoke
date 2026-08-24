@@ -1441,3 +1441,35 @@ measurements):
   `upload-url`, `songs`, and `/jobs/{id}/events` held open for 34s - and
   **zero** `GET /jobs/{id}` polls. The screen showed `מפריד ערוצים` and then
   `מוכן` without ever showing `מתחבר מחדש…`.
+
+From `T-3.11`:
+
+- **The keep-alive is a cron-job.org job, and the GitHub Actions workflow is
+  only its backup.** Chapter 14 asks for an external free cron every 10
+  minutes and is explicit that it must not run inside the service - a service
+  that is asleep does not wake itself. GitHub Actions looked like the answer
+  that costs nothing and lives in the repository, and it was **measured and
+  rejected**: with a `*/5` schedule it fired **one** run in 81 minutes (at
+  14:25 UTC, 43 minutes after the workflow registered, and nothing in the 38
+  after). A `push`-triggered run in the same repository took **6 seconds**, so
+  the runners were fine and the scheduler was not - GitHub's own status page
+  said Actions was degraded. Render sleeps after 15 minutes, so that is not a
+  keep-alive, it is the appearance of one.
+- `.github/workflows/keep-alive.yml` stays anyway: it costs nothing, it runs
+  somewhere else entirely, and the measurement is written at the top of it so
+  nobody relies on it alone.
+- **cron-job.org**: free, **no payment method** (the fifth provider in this
+  project verified that way), minute resolution, `https://karuki-api.onrender.com/system/health`
+  every five minutes. Notify after **3** consecutive failures rather than 1,
+  because a cold start takes ~33s against the job's 30s timeout - the single
+  failure that is worth an email is the one the system was going to fix by
+  itself.
+- **Verified by not touching it**: 44 minutes in which neither this machine nor
+  a browser asked the API anything, then one request - `uptime_sec` **3441**
+  (57 minutes) and the answer in **0.78s**. It had not restarted, so it had
+  not slept, and the only thing knocking was the cron.
+- The measurement before this one was wrong and is worth remembering as a
+  shape: the first monitor polled `/system/health` every 100 seconds to watch
+  the uptime climb - **the measurement was the keep-alive**. Anything that
+  watches a service for signs of sleep has to be silent for longer than the
+  sleep threshold.
