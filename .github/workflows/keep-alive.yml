@@ -42,6 +42,13 @@ on:
     - cron: "*/5 * * * *"
   # So it can be run by hand after a deploy, without waiting for the schedule.
   workflow_dispatch:
+  # A change to this file is checked by running it, immediately, rather than by
+  # waiting up to five minutes to find out whether it still works. It also
+  # answers the question the schedule cannot while GitHub is having a bad day:
+  # whether Actions runs here at all, or only runs late.
+  push:
+    paths:
+      - .github/workflows/keep-alive.yml
 
 # Never two at once: a queued backlog of pings after an outage would arrive as
 # a burst on a service that is already struggling.
