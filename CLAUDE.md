@@ -1515,3 +1515,11 @@ From `T-3.12`:
   is a warning rather than a crash - the local venv was built by hand in phase
   0 and is not installed from `pyproject`, so that combination is an ordinary
   developer state rather than a mistake.
+- **Verified on the deployed pair, both sides.** `/api/v1/system/error` answers
+  `404` with no token and with a wrong one, and with the right one answers
+  `500 internal_error` carrying `request_id 9c38843e…` - and **that same id is
+  a tag on the issue in Sentry**, which is the whole point of reporting from
+  the middleware rather than from an SDK hook. From the deployed web app, a
+  browser error posted an envelope that answered `200`, and both issues are in
+  the dashboard: `ProbeError` in `python-fastapi` and `Error` in `karuki-web`,
+  the second with the page URL on it.
