@@ -1417,3 +1417,27 @@ From `T-3.10`:
   downloaded copy is now `0cd5ec1db3789b12.mp3` rather than
   `0cd5ec1db3789b12`, and the same stem that had been answered with a `400`
   came back **Hebrew, 5 segments, 29 words, in 4.2s**.
+
+From `D-18`'s repair (the loose end `T-3.10` left, done between `T-3.11`'s
+measurements):
+
+- **`EventSource` cannot send a header, so the progress stream had to stop
+  being an `EventSource`.** `apps/web/src/lib/sse.ts` reads the response with
+  `fetch` and a reader, and parses the frames by hand: `event:` and `data:`
+  lines, a blank line ends a message, a leading colon is a comment. That is the
+  entire format, which is also why the API frames it by hand
+  (`apps/api/sse.py`).
+- **The token is in a header and not in the query string.** A URL is logged by
+  every proxy it passes, kept in history, and handed on in a `Referer`; this
+  project has been careful about that all the way through - see the note in
+  `karuki-browser-checks` about a token appearing twice in a transcript - and a
+  progress bar is not the reason to stop.
+- What is lost is `EventSource`'s automatic reconnection. **The polling
+  fallback is now the only recovery**, which is honest: it had to exist anyway
+  for the proxy that breaks streaming, and it has in fact been carrying every
+  job since `T-3.7`.
+- Verified on the deployed pair, which is the only place the bug existed: one
+  song from upload to `ready` with **exactly three API calls** -
+  `upload-url`, `songs`, and `/jobs/{id}/events` held open for 34s - and
+  **zero** `GET /jobs/{id}` polls. The screen showed `מפריד ערוצים` and then
+  `מוכן` without ever showing `מתחבר מחדש…`.
