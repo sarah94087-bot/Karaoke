@@ -124,6 +124,13 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_ERROR_PROBE_TOKEN", "")
     )
 
+    # The key to `/system/reap`, which is chapter 9's retention pass run from
+    # outside on a schedule (T-3.13). Its own token and not the probe's: one of
+    # those routes raises an exception and the other deletes audio.
+    maintenance_token: str = field(
+        default_factory=lambda: os.getenv("KARUKI_MAINTENANCE_TOKEN", "")
+    )
+
     # Who a request belongs to when there is no auth configured. Chapter 11's
     # "everything runs locally" rests on this; nothing in production does.
     dev_user_id: str = field(

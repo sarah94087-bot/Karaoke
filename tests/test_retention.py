@@ -223,3 +223,88 @@ async def test_removing_one_song_does_not_touch_another(session, storage, tmp_pa
 
     assert storage.exists(f"songs/{recent.id}/stems/vocals.mp3")
     assert len(await stems_for(session, recent.id)) == 2
+
+
+# --- the scheduled pass, as an endpoint (T-3.13) -----------------------------
+#
+# Chapter 9 wants the deletion to happen on a schedule, and a free deployment
+# has nowhere to run a script: Render's cron jobs are paid, and nothing here
+# goes behind a payment method. So the schedule is an HTTP call from outside,
+# and these are the three things that must be true of that door.
+
+
+@pytest.fixture
+async def deployed(database_url: str, schema: None, empty_songs: None, storage: LocalStorage):
+    """The API with a real database behind it, and a maintenance token set."""
+    import dataclasses
+
+    from fastapi.testclient import TestClient
+
+    from apps.api.config import Settings
+    from apps.api.main import create_app
+    from apps.api.routers import system as system_router
+
+    engine = create_engine(database_url)
+    factory = session_factory(engine)
+    app = create_app()
+    app.state.sessions = factory
+    app.state.storage = storage
+    original = system_router.settings
+    system_router.settings = dataclasses.replace(Settings(), maintenance_token="letmein")
+    try:
+        yield TestClient(app), factory
+    finally:
+        system_router.settings = original
+        await engine.dispose()
+
+
+async def test_the_reap_endpoint_is_a_404_without_the_token(deployed):
+    """The same answer a stranger gets, and deliberately not a 503 - which
+    would confirm the route is real."""
+    client, _ = deployed
+
+    assert client.post("/api/v1/system/reap").status_code == 404
+    assert client.post("/api/v1/system/reap?token=wrong").status_code == 404
+
+
+async def test_the_reap_endpoint_lists_without_removing_by_default(
+    deployed, storage: LocalStorage, tmp_path: Path
+):
+    """A dry run is the default here for T-3.9's reason: a destructive default
+    is one that gets run by accident - and this one runs from a schedule, daily,
+    with nobody watching."""
+    client, factory = deployed
+    async with factory() as session:
+        await a_song(session, storage, tmp_path, played=long_ago(200))
+        await session.commit()
+
+    body = client.post("/api/v1/system/reap?token=letmein").json()
+
+    assert body == {
+        "applied": False,
+        "days": retention.UNPLAYED_DAYS,
+        "songs": 1,
+        "bytes": 2 * MB,
+        "freed_bytes": 0,
+    }
+    async with factory() as session:
+        assert len(await retention.reapable(session)) == 1, "the dry run removed something"
+
+
+async def test_the_reap_endpoint_removes_when_told_to(
+    deployed, storage: LocalStorage, tmp_path: Path
+):
+    client, factory = deployed
+    async with factory() as session:
+        song = await a_song(session, storage, tmp_path, played=long_ago(200))
+        await session.commit()
+        song_id = song.id
+
+    body = client.post("/api/v1/system/reap?token=letmein&apply=true").json()
+
+    assert body["applied"] is True
+    assert body["songs"] == 1
+    assert body["freed_bytes"] == 2 * MB
+    async with factory() as session:
+        assert await retention.reapable(session) == []
+    assert not storage.exists(f"songs/{song_id}/stems/vocals.mp3")

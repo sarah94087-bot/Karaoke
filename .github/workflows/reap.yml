@@ -1,0 +1,69 @@
+# T-3.13, chapter 9: remove the audio of songs nobody has played for six months.
+#
+# T-3.9 built this as a script for a machine that has the database credentials
+# on it. A deployment has no such machine - Render's cron jobs are a paid
+# service type, and nothing in this project goes behind a payment method - so
+# the schedule is an HTTP call from outside to `POST /system/reap`, guarded by
+# its own token.
+#
+# **GitHub Actions is the right home for this one, and it was the wrong home
+# for the keep-alive.** T-3.11 measured the scheduler firing once in 81 minutes
+# against a five-minute cron, which makes it useless for a service that falls
+# asleep after fifteen. Here the rule is six months and the job is idempotent -
+# a song whose audio is already gone is not in the list any more - so a run
+# that lands hours late, or not at all until tomorrow, changes nothing.
+#
+# `apply: true` is deliberate: chapter 9 asks for the deletion to happen, not
+# to be described. The dry run is what a person does by hand before trusting
+# it (`scripts/reap.py`, or this endpoint without `apply`), and the metadata -
+# the title, the corrected lyrics, the measured key, the saved settings - is
+# kept either way. What goes is the audio.
+
+name: reap
+
+on:
+  schedule:
+    # 03:15 UTC. The time is arbitrary; the date is not, and neither is a
+    # daily cadence for a six-month rule - it is simply the cheapest way to
+    # never be far behind.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: reap
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Remove the audio nobody is using
+        env:
+          API: https://karuki-api.onrender.com
+          # Set once in the repository's secrets, from the value Render
+          # generated. A workflow that could be read out of the repository is
+          # a workflow anybody could use to delete a library.
+          TOKEN: ${{ secrets.KARUKI_MAINTENANCE_TOKEN }}
+        run: |
+          set -uo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::KARUKI_MAINTENANCE_TOKEN is not set in this repository's secrets"
+            exit 1
+          fi
+          # --data-urlencode so a token with / or + in it survives the URL.
+          response=$(curl -sS --max-time 120 -X POST -G \
+            --data-urlencode "token=${TOKEN}" \
+            --data-urlencode "apply=true" \
+            -w '\n%{http_code}' "${API}/api/v1/system/reap")
+          code=$(printf '%s' "$response" | tail -n 1)
+          body=$(printf '%s' "$response" | head -n -1)
+          echo "$body"
+          if [ "$code" != "200" ]; then
+            # A 404 here means the token did not match - the same answer a
+            # stranger gets, which is the point of that route's design.
+            echo "::error::/system/reap answered $code"
+            exit 1
+          fi

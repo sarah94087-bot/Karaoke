@@ -92,6 +92,12 @@ services:
       # 5,000-error monthly quota in an afternoon.
       - key: KARUKI_ERROR_PROBE_TOKEN
         generateValue: true
+      # The key to POST /system/reap - chapter 9's deletion, called daily from
+      # a GitHub Actions schedule (T-3.13), because Render's own cron jobs are
+      # a paid service type. Copy the generated value into the repository's
+      # Actions secrets as KARUKI_MAINTENANCE_TOKEN.
+      - key: KARUKI_MAINTENANCE_TOKEN
+        generateValue: true
       # The web app's address, and nothing else - chapter 14: "the frontend
       # address only, not an asterisk".
       #
