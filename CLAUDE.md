@@ -181,14 +181,20 @@ hand in both text and time.
 `T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
 the rest of phase 3 is waiting on account signups.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.10` are done —
+Phase 3 (cloud and multiple users) is closed except for one checklist item:
+`T-3.1` to `T-3.13` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
 carrying the handle on its remote call and what it spent, staged readiness
 measured end to end in the cloud configuration, accounts, a library that is one
 person's, chapter 9's limits with the screen that shows them, the audio of
-songs nobody sings any more removed on a schedule, and the whole thing deployed
-and taken through one song end to end from its public address.
+songs nobody sings any more removed on a schedule, the whole thing deployed and
+taken through one song end to end from its public address, a keep-alive that
+was measured rather than assumed, errors that report themselves, and chapter
+14's checklist with the evidence for each item in
+`docs/phase3/deploy-checklist.md`. **Ten of its twelve are done**: the smoke
+test still needs one run with a password in the environment, and the phone
+(`T-0.2.5`) is still waiting on hardware.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
@@ -1523,3 +1529,47 @@ From `T-3.12`:
   browser error posted an envelope that answered `200`, and both issues are in
   the dashboard: `ProbeError` in `python-fastapi` and `Error` in `karuki-web`,
   the second with the page URL on it.
+
+From `T-3.13`:
+
+- **The six checks are `scripts/smoke.py`**, one command, about two minutes,
+  and chapter 14's rule is repeated at the top of it: if one fails, roll back
+  rather than fix forward. Two checks were added that the chapter does not name
+  and this project has paid for - the **web app's own page** (`T-3.10` shipped
+  a build with none of its variables while every `curl` against the API passed)
+  and the **over-quota refusal**, which is how the checklist asks for quotas to
+  be verified.
+- **A run without credentials skips what it cannot check and says so.** Against
+  the deployment: `3 passed, 0 failed, 4 skipped` - the four need a password,
+  which lives in the environment and never in the repository or a command line.
+  So checklist item 11 is **not** marked done; ten of the twelve are.
+- **`.env.example` is now a test, not a habit.** `tests/test_env_example.py`
+  reads the source for every environment variable the code looks at and fails
+  on any the file does not mention. It found **twelve** undocumented names the
+  day it was written. The drift only shows up when somebody is setting up a
+  deployment, and a name missing there is a variable missing in production -
+  which is exactly how `KARUKI_CORS_ORIGINS`, `MODAL_TOKEN_ID` and
+  `GROQ_API_KEY` each broke the first deploy.
+- **The retention policy was not scheduled at all**, which the checklist caught.
+  `T-3.9` built it as a script for a machine with the database credentials on
+  it, and a deployment has no such machine - Render's cron is a paid service
+  type. `POST /system/reap` is that script as an endpoint, with **its own
+  token** (deliberately not the error probe's: one route raises an exception,
+  the other deletes audio), and `.github/workflows/reap.yml` calls it daily.
+  **This is the one place GitHub's unreliable scheduler is the right tool** -
+  the rule is six months and the pass is idempotent, so a run hours late
+  changes nothing. The same scheduler was rejected for the keep-alive in the
+  same week, on the same measurement.
+- Verified against the deployment: no token and a wrong token both `404`;
+  `days=0` counted **4 songs and 8.4MB** with `freed_bytes: 0`; the real
+  180-day rule found nothing, which is correct because every song there was
+  uploaded that day. The `days=0` call is what proves the mechanism rather than
+  the emptiness of the shelf.
+- **The one that stays open is item 12, a real phone** (`T-0.2.5`, blocked on
+  hardware since phase 0). It is not ticked, and the browser measurements
+  standing in for it say plainly that they are simulations.
+- Worth knowing for any live check from this machine: **TLS inspection breaks
+  `curl` against `*.onrender.com` and `*.vercel.app`** while leaving other
+  hosts alone - TCP connects, the handshake renegotiates and hangs. The same
+  requests through `trust_system_certificates()` answer in under a second, so
+  the project's own scripts are unaffected and `curl` is the thing that lies.
