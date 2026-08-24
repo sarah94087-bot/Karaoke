@@ -36,6 +36,7 @@ from packages.core.transcribe import (
 )
 from packages.core.usage import gpu_seconds_this_month, usd
 from packages.providers.lyrics_catalogue import LyricsCatalogue
+from packages.providers.monitoring import capture
 from packages.providers.separation import (
     SeparationError,
     SeparationUnavailable,
@@ -123,6 +124,13 @@ async def run_job(
         return job
     except Exception as exc:  # noqa: BLE001 - an unexpected failure is still a failed job
         log.exception("job %s crashed at %s", job.id, job.current_step)
+        # A job that crashed is the report worth having: it happened without a
+        # request to carry it, to somebody who is looking at a failed bar, and
+        # nobody is reading the log of a free instance (T-3.12). A *handled*
+        # failure - PipelineError above - is not reported: those are the file's
+        # problem or the operator's, and they already have a code the screen
+        # explains in Hebrew.
+        capture(exc, job_id=str(job.id), step=str(job.current_step))
         await jobs.fail(session, job, "internal_error", song)
         await session.commit()
         announce(bus, job, song, "failed")

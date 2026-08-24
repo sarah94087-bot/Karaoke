@@ -1473,3 +1473,45 @@ From `T-3.11`:
   the uptime climb - **the measurement was the keep-alive**. Anything that
   watches a service for signs of sleep has to be silent for longer than the
   sleep threshold.
+
+From `T-3.12`:
+
+- **D-24 is Sentry**, free tier, **no payment method** - the sixth provider
+  verified that way. Organisation `karuki`, **EU data storage** (the rest of
+  the project is in Frankfurt and Amsterdam, and Sentry says at signup that the
+  region cannot be changed later). Two projects, because an error from the API
+  and an error in a browser are different incidents: `python-fastapi` and
+  `karuki-web`. Only **error monitoring** is enabled - tracing, profiling,
+  replay and logs each have their own quota, and the free plan's 5,000 errors a
+  month are what has to last.
+- **The API uses the real SDK; the browser does not.** That asymmetry is the
+  whole design decision. In the API it is one small dependency in an image that
+  already carries pyjwt, and it buys stack traces, local variables and request
+  context for an error that happened once, to somebody else, in production. In
+  the browser `@sentry/nextjs` is a build plugin, instrumentation files and a
+  runtime package added to an app that deliberately has three (T-1.9), for a
+  wire format that is **a POST with three lines of JSON in it**.
+  `apps/web/src/lib/monitoring.ts` writes that envelope by hand. Verified
+  against the real service: it answered `200 {"id": "79eea5b1…"}`.
+- **Reporting is explicit, not automatic, and the reason is T-1.2.** The
+  middleware *handles* every unhandled exception to produce the error shape
+  with a `request_id` on it, so by the time an SDK's own ASGI hook could see
+  it there is nothing left to see. `middleware.py` therefore calls `capture`
+  itself - and passes the `request_id`, which is what makes an issue in the
+  dashboard and the id on somebody's screen the same incident.
+- A job that **crashes** is reported; a job that **fails** is not. A
+  `PipelineError` is the file's problem or the operator's, it already has a
+  code the screen explains in Hebrew, and it is not news. An unexpected
+  exception in the pipeline has no request to carry it and nobody reading the
+  log of a free instance, which is exactly what D-24 is for.
+- **`GET /system/error` is chapter 14's "deliberate error", and it is closed by
+  default.** It needs `KARUKI_ERROR_PROBE_TOKEN` set *and* matched, and answers
+  `404` otherwise - the same answer a wrong token gets, and the same answer a
+  deployment gets when the variable is skipped, so forgetting it fails safe. An
+  open route that raises 500s would spend a 5,000-error quota in an afternoon.
+  Render generates the value (`generateValue: true`), so it is never typed
+  anywhere.
+- Nothing is reported without a DSN, and a DSN with no `sentry-sdk` installed
+  is a warning rather than a crash - the local venv was built by hand in phase
+  0 and is not installed from `pyproject`, so that combination is an ordinary
+  developer state rather than a mistake.

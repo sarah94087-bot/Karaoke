@@ -22,6 +22,9 @@ PUBLIC = {
     "SUPABASE_URL": "NEXT_PUBLIC_SUPABASE_URL",
     "SUPABASE_ANON_KEY": "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "KARUKI_API_BASE": "NEXT_PUBLIC_API_BASE",
+    # D-24: the browser reports its own errors (T-3.12). A DSN is public by
+    # design - it can write events and read nothing.
+    "NEXT_PUBLIC_SENTRY_DSN": "NEXT_PUBLIC_SENTRY_DSN",
 }
 
 HEADER = """# Written by scripts/web_env.py from the repository's .env - do not edit by hand.

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AccountBar } from "@/components/AccountBar";
+import { ErrorReporting } from "@/components/ErrorReporting";
 import { directionOf, isLocale, locales } from "@/i18n/config";
 import { getDictionary } from "@/i18n";
 
@@ -52,6 +53,8 @@ export default async function LocaleLayout({
         {/* On every screen, because it is also what notices a session has
             expired - see AccountBar. */}
         <AccountBar t={t} locale={locale} />
+        {/* Renders nothing; listens for the errors nobody predicted (D-24). */}
+        <ErrorReporting />
         {children}
       </body>
     </html>

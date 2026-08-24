@@ -31,6 +31,15 @@ api = [
     # deployment that crashed on its first import and worked on every developer
     # machine, because a venv built for local separation already has it.
     "numpy",
+    # D-24 (T-3.12). The second dependency this project takes rather than
+    # hand-rolls, and for the same shape of reason as pyjwt: what it buys is
+    # the stack trace, the local variables and the request context of an error
+    # that happened once, to somebody else, in production - the one thing that
+    # cannot be reproduced afterwards. The browser side is hand-written
+    # instead, because there the same feature is a POST with two lines of JSON
+    # in it and the alternative is a large dependency in an app whose three
+    # runtime packages are the point (T-1.9).
+    "sentry-sdk>=2.0",
     # T-3.7, and the one place this project does *not* hand-roll a signature.
     # Every other one here is HMAC - one hash, and getting it wrong shows up as
     # "the service refuses everything". Supabase signs its tokens with ES256,

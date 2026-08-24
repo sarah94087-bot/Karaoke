@@ -162,6 +162,7 @@
     "separation_failed": "Separating the stems failed. You can try again.",
     "separation_unavailable": "Separation is unavailable right now. That is our problem, not your file's.",
     "interrupted": "Processing stopped part way through. You can start it again.",
+    "not_found": "We could not find what you asked for.",
     "job_not_found": "That job was not found.",
     "job_not_retryable": "That job cannot be run again.",
     "song_not_found": "That song was not found.",

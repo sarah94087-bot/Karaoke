@@ -111,6 +111,19 @@ class Settings:
     # allows locally and `create_app` refuses in production.
     supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
 
+    # D-24 (T-3.12). Empty means errors are not reported anywhere, which is the
+    # normal state locally and chapter 11's promise that the product runs on a
+    # machine with no accounts on it.
+    sentry_dsn: str = field(default_factory=lambda: os.getenv("SENTRY_DSN", ""))
+
+    # An error probe for chapter 14's checklist item "a deliberate error appears
+    # in the monitoring tool". Unset - which is also what Render does to a
+    # variable left blank - means the route answers 404, so the safe state is
+    # the default rather than the thing somebody has to remember to turn off.
+    error_probe_token: str = field(
+        default_factory=lambda: os.getenv("KARUKI_ERROR_PROBE_TOKEN", "")
+    )
+
     # Who a request belongs to when there is no auth configured. Chapter 11's
     # "everything runs locally" rests on this; nothing in production does.
     dev_user_id: str = field(

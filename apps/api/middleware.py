@@ -8,6 +8,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from packages.providers.monitoring import capture
+
 from .errors import error_body, json_error
 from .request_id import HEADER, request_id_var
 
@@ -35,12 +37,23 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
             log.exception(
                 "unhandled error [request_id=%s] %s %s",
                 request_id,
                 request.method,
                 request.url.path,
+            )
+            # Explicitly, and here: this middleware *handles* the exception, so
+            # by the time anything else could see it there is nothing left to
+            # see. The request id goes with it, which is what turns "an error
+            # in the dashboard" and "the id on somebody's screen" into one
+            # incident (T-3.12).
+            capture(
+                exc,
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
             )
             # Generic on purpose: the detail belongs in the log above,
             # correlated by request_id, not in a response a user can read.

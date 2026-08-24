@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from packages.core.db import create_engine, session_factory
 from packages.core.jobs import recover_interrupted
 from packages.providers.lyrics_catalogue import get_catalogue
+from packages.providers.monitoring import init_monitoring
 from packages.providers.separation import get_separator
 from packages.providers.storage import Storage, get_storage
 from packages.providers.transcription import get_transcriber
@@ -129,6 +130,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    # Before anything else that can fail: an error during startup is exactly
+    # the one worth having in the dashboard, and D-24's whole point is not
+    # finding out from a user.
+    if init_monitoring(settings.sentry_dsn, settings.environment, settings.version):
+        log.info("error monitoring is on (%s)", settings.environment)
+    elif not settings.is_local:
+        # Not a refusal: a deployment without monitoring works perfectly and
+        # chapter 11 allows one. It is worth a line, though - "no errors in the
+        # dashboard" and "no monitoring configured" look identical from there.
+        log.warning("SENTRY_DSN is not set: errors are logged here and reported nowhere")
+
     # A production deployment with no identity provider would serve every user
     # the same library. Better to refuse to start than to find that out from
     # the outside.
