@@ -74,7 +74,13 @@ services:
       - key: GROQ_API_KEY
         sync: false
       # The web app's address, and nothing else - chapter 14: "the frontend
-      # address only, not an asterisk". Set once Vercel has given one, and the
-      # same value goes into `scripts/bucket_cors.py` for the bucket.
+      # address only, not an asterisk".
+      #
+      # A value rather than `sync: false`, because it is not a secret and the
+      # first attempt got that wrong twice over: Render silently *skips* a
+      # `sync: false` variable left blank, so the deployed API had no origins at
+      # all and refused the browser's preflight with a 400. Here it is reviewable,
+      # and changing it is a push rather than a click somebody has to remember.
+      # The same list goes on the bucket - `scripts/bucket_cors.py --apply`.
       - key: KARUKI_CORS_ORIGINS
-        sync: false
+        value: https://karaoke-theta-blue.vercel.app
