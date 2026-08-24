@@ -2,7 +2,11 @@
 
 T-3.13. Twelve items, each with what was actually done and where the evidence
 is. Everything marked done was measured against the deployed services; the two
-that are not done say so.
+that are not say so.
+
+**Ten of twelve are done.** Item 11 needs one run of the smoke test with a
+password in the environment — the four checks it skips are the ones that sign
+in — and item 12 needs a phone.
 
 The smoke test that goes with this is `scripts/smoke.py` — six checks, about
 two minutes, run after every deploy. Chapter 14's rule for it is worth
@@ -19,9 +23,9 @@ forward.**
 | 6 | Migrations ran and succeeded | done |
 | 7 | keep-alive active and verified | done |
 | 8 | Error monitoring connected, verified with a deliberate error | done |
-| 9 | User quotas active — verified by trying to exceed one | done |
+| 9 | User quotas active — verified by trying to exceed one | done in `T-3.8`; the smoke test's own attempt needs a session |
 | 10 | Retention policy scheduled, and a successful dry run | done |
-| 11 | The smoke test passed in full | done (see below) |
+| 11 | The smoke test passed in full | **not in full** — 3 passed, 0 failed, 4 skipped for want of a password |
 | 12 | Checked on a real phone, not only a browser simulation | **not done** — `T-0.2.5`, waiting on hardware |
 
 ## 1. No credit card, and caps where they exist
@@ -146,6 +150,20 @@ reason: a command whose default is destructive is one that will one day be run
 by accident. The endpoint's own token is deliberately *not* the error probe's —
 one of those routes raises an exception, the other deletes audio.
 
+**Run against the deployment, 2026-08-24:**
+
+| call | answer |
+|---|---|
+| no token | `404 not_found` |
+| wrong token | `404 not_found` |
+| `?token=…&days=0` | `200 {"applied": false, "days": 0, "songs": 4, "bytes": 8836352}` |
+| `?token=…` (the real 180-day rule) | `200 {"applied": false, "days": 180, "songs": 0, "bytes": 0}` |
+
+The `days=0` run is the one that proves the mechanism rather than the emptiness
+of the shelf: it counted four real songs and 8.4MB, and `freed_bytes` stayed
+`0` because a dry run frees nothing. The 180-day run finds none, which is
+correct — every song in the deployment was uploaded today.
+
 ## 11. The smoke test
 
 `scripts/smoke.py` covers chapter 14's six checks, and adds two that the
@@ -158,6 +176,31 @@ rather than reporting them as passes. With `KARUKI_SMOKE_EMAIL` /
 `KARUKI_SMOKE_PASSWORD` in the environment it signs in, uploads a file straight
 to the bucket, watches the progress stream open, and fetches a stem back
 through a signed link.
+
+**Run against the deployment, 2026-08-24** — `3 passed, 0 failed, 4 skipped`:
+
+```
+ok    health answers  - 200 in 3.77s, up 4416s
+ok    the web app serves its Hebrew page  - 200, 19KB
+skip  signing in  - no KARUKI_SMOKE_EMAIL/PASSWORD; unauthenticated is refused (401)
+skip  upload goes straight to storage  - needs a session
+skip  the progress stream moves  - needs an upload
+skip  a processed song opens with audio  - needs a session
+ok    a deliberate error reaches monitoring  - 500, request_id d635da0d…
+```
+
+The four skips are the ones that need somebody's password, and the honest
+reading of this run is that **the smoke test has not passed in full** — see
+item 11's status in the table at the top. The same four were each carried out
+by hand during `T-3.10` and `D-18`'s repair, which is why the deployment is
+believed to work; the point of the script is that next time it is one command
+and not an afternoon.
+
+Worth knowing before running it here: this machine's TLS inspection breaks
+`curl` against `*.onrender.com` and `*.vercel.app` while leaving other hosts
+alone — the same failure `packages/providers/net.py` was written for. The
+script goes through `trust_system_certificates()` and is unaffected; `curl`
+needs `--ssl-no-revoke` and sometimes not even that.
 
 ## 12. A real phone
 
