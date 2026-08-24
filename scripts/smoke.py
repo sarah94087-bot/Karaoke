@@ -150,7 +150,17 @@ class Smoke:
             headers={"apikey": key, "Content-Type": "application/json"},
         )
         if status != 200:
-            self.record("signing in", False, f"the identity provider answered {status}")
+            # Say *which* refusal. "400" is true and useless: a wrong password,
+            # an unconfirmed address and a project that has run out of email
+            # all land here, and they are three different afternoons.
+            answer = json.loads(body or b"{}") if body[:1] == b"{" else {}
+            code = answer.get("error_code") or answer.get("error") or ""
+            message = answer.get("msg") or answer.get("error_description") or ""
+            self.record(
+                "signing in",
+                False,
+                f"the identity provider answered {status} {code} {message}".strip(),
+            )
             return
         self.token = json.loads(body)["access_token"]
 
