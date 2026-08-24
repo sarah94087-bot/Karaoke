@@ -1,0 +1,89 @@
+# T-3.11, D-26: keep the API awake, from outside the API.
+#
+# Render's free instance stops after about 15 minutes with no request, and the
+# next visitor pays for the restart. Measured on this deployment in T-3.10: a
+# cold `/system/health` took **32.7s**, against 0.5s warm. Chapter 4's whole
+# time budget assumes the API answers immediately, so half a minute of nothing
+# before the upload form even responds is the difference between "processing"
+# and "broken".
+#
+# **Chapter 14 is explicit that this cannot live inside the service** - a
+# service that is asleep does not wake itself - so it needs somewhere else to
+# run. GitHub Actions is that somewhere: no new account, no payment method
+# (the rule from chapter 1), free for a public repository, and it lives in the
+# repository next to `render.yaml` rather than in a console nobody can review.
+#
+# It is `.github/workflows/` and not `infra/github/` because Actions only reads
+# that one path. `infra/github/` stays for anything that is *about* GitHub but
+# not run by it.
+#
+# Two things worth knowing before trusting it:
+#
+# - **GitHub's schedule is best-effort.** Runs are queued, not guaranteed on
+#   the minute, and under load they are delayed - occasionally past ten
+#   minutes. That is why this asks every five and not every ten as chapter 14
+#   suggests: two chances inside Render's fifteen-minute window, so one late
+#   run does not put the service to sleep. `docs/phase0/quotas.md` carries what
+#   the intervals actually came out as.
+# - **GitHub disables scheduled workflows in a repository with no activity for
+#   60 days**, and says so by email. On a project that is being worked on this
+#   never comes up; on one that is finished, it is exactly the moment the
+#   keep-alive quietly stops.
+#
+# The hours add up: five-minute pings keep the instance up continuously, which
+# is ~720 hours a month against Render's 750 free instance-hours. It fits
+# because there is exactly one service - chapter 14 said the free hours fit one
+# continuously running service, and this is what spends them.
+
+name: keep-alive
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  # So it can be run by hand after a deploy, without waiting for the schedule.
+  workflow_dispatch:
+
+# Never two at once: a queued backlog of pings after an outage would arrive as
+# a burst on a service that is already struggling.
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health endpoint
+        env:
+          # The unprefixed path on purpose (T-1.2): it is the one the container
+          # healthcheck and this cron use, so both survive a change to the
+          # API's `/api/v1` prefix.
+          URL: https://karuki-api.onrender.com/system/health
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            # 60s, because a *cold* start legitimately takes about 35 - which
+            # is the case this job exists to prevent and therefore the one it
+            # must not fail on.
+            response=$(curl -sS --max-time 60 -w '\n%{http_code}\n%{time_total}' "$URL")
+            status=$?
+            code=$(printf '%s' "$response" | tail -n 2 | head -n 1)
+            seconds=$(printf '%s' "$response" | tail -n 1)
+            body=$(printf '%s' "$response" | head -n -2)
+            if [ "$status" -eq 0 ] && [ "$code" = "200" ]; then
+              echo "ok in ${seconds}s: $body"
+              case "$body" in
+                *'"status":"ok"'*) exit 0 ;;
+                # A 200 whose body does not say ok is worse than a 500: the
+                # platform's own health check is happy and the service is not.
+                *) echo "::error::200 but the body does not say ok: $body"; exit 1 ;;
+              esac
+            fi
+            echo "attempt $attempt failed (curl $status, http $code)"
+            sleep 10
+          done
+          echo "::error::$URL did not answer after three attempts"
+          exit 1
