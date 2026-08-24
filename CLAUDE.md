@@ -181,13 +181,14 @@ hand in both text and time.
 `T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
 the rest of phase 3 is waiting on account signups.
 
-Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.9` are done —
+Phase 3 (cloud and multiple users) is under way: `T-3.1` to `T-3.10` are done —
 object storage with expiring links, uploads that go straight to the bucket,
 separation on a rented GPU that reads and writes the bucket itself, every job
 carrying the handle on its remote call and what it spent, staged readiness
 measured end to end in the cloud configuration, accounts, a library that is one
-person's, chapter 9's limits with the screen that shows them, and the audio of
-songs nobody sings any more removed on a schedule.
+person's, chapter 9's limits with the screen that shows them, the audio of
+songs nobody sings any more removed on a schedule, and the whole thing deployed
+and taken through one song end to end from its public address.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
@@ -1307,3 +1308,103 @@ From `T-3.7`:
   server-rendered library called the API, got a 401, and drew a red error card
   with a request id on it. Being signed out is a state, not a failure; both
   pages now show the way in.
+
+From `T-3.10`:
+
+- **It is deployed.** The API is `https://karuki-api.onrender.com` (Render,
+  free, Frankfurt); the web app is `https://karaoke-theta-blue.vercel.app`
+  (Vercel, Hobby). `D-23` is closed, and **no provider in this project has
+  ever been given a card** - B2, Supabase, Render and Vercel, each verified in
+  the account the way `T-0.6` insists on.
+- The configuration is `render.yaml` in the repository, read through Render's
+  Blueprint: a push changes the deployment and there is nothing to remember to
+  click. The web app is deliberately not in it - chapter 14 says the free hours
+  fit one continuously running service, and `T-3.11`'s keep-alive spends them
+  on the API.
+- Vercel needs **Root Directory `apps/web`** (it detects FastAPI from the
+  repository root otherwise) and three `NEXT_PUBLIC_*` variables, which are
+  **baked at build time** - changing them needs a rebuild, not a restart.
+- **Migrations run in the start command.** Chapter 10 asks for a separate step
+  ahead of the code and is right, but Render's pre-deploy hook is paid and
+  nothing here goes behind a payment method. With the single instance chapter 9
+  budgets there is no second container to race, and a failed migration stops
+  the server instead of serving against a schema it does not understand. The
+  first deploy took Supabase from `c6782423e7f2` to `f27c4d0b9a13`.
+- **Two real faults, both found by deploying rather than by reading.**
+  - The image crashed at startup: `ModuleNotFoundError: numpy`. T-1.15's tempo
+    and key detection is imported by the pipeline on every job, and numpy was
+    only in the `separation` group - so it was present on every machine that
+    had ever run local separation and absent in the image. It is in `api` now.
+  - `KARUKI_CORS_ORIGINS` was marked `sync: false`, Render asked for it before
+    Vercel had produced an address, was given nothing, and **skipped the
+    variable entirely**. The API ran on the local-development default and
+    answered the deployed app's preflight with `400`. It is a `value:` in
+    `render.yaml` now - a public address is not a secret, and as a value it
+    cannot be silently dropped.
+- Chapter 14's three named mistakes are all handled: the port comes from
+  `$PORT`, the web app's variables are build-time and written down as such, and
+  **CORS is on the bucket as well as on the API** - re-run
+  `scripts/bucket_cors.py --apply` after any change to the deployed origin.
+- Verified from outside: `/system/health` `200` with `environment: production`,
+  `/api/v1/songs` `401 not_signed_in` with a request id, `/docs` `200`, the web
+  app `200`, and a preflight from the deployed origin answering with
+  `access-control-allow-origin`.
+- **The end-to-end run is what actually closed it, and it found five more
+  things.** Signed in on the public address, uploaded a 45s excerpt from the
+  deployed app and took it to the player: the browser `PUT` went straight to
+  B2 with a real percentage, separation ran on the GPU (**17.8s billed**,
+  `fc-01M0SHK3KKNK7K2V1EF459JPRS`), the four stems came back from the bucket
+  as presigned links, the analysis reported `Dm` and `133 BPM`, and the clock
+  ran `0:08 -> 0:24 -> 0:36` of `0:45` with the audio playing. Everything below
+  was found by doing that and not by reading anything.
+- **The Vercel build had none of its three `NEXT_PUBLIC_*` variables.** Sign-in
+  answered "the accounts service is not configured on this deployment", and
+  `API_BASE` was falling back to `127.0.0.1:8000` - the deployed app pointing
+  at a laptop. The earlier "verified from outside" missed it because every one
+  of those checks was `curl` against the API; none of them was the app. **The
+  way to check is the bundle, not the dashboard**: fetch the page's chunks and
+  grep them for `supabase.co` and the API host, because these are compiled in
+  at build time and a variable added afterwards is not in the code that is
+  being served until a rebuild.
+- **Every table was readable over the internet with the anon key.** `D-15` and
+  `D-16` were closed by one signup, and that is exactly the problem: Supabase
+  publishes the `public` schema over PostgREST, Alembic creates tables with row
+  level security **off**, and the key that opens it is compiled into the browser
+  bundle by design. `GET /rest/v1/alembic_version` answered `200` with the
+  revision in it. The other tables answered `[]` because the deployed stack had
+  never finished a song - that is a schedule, not a defence. Migration
+  `b58d0c9a3e77` enables RLS with no policies on all seven tables; our API owns
+  them and an owner is exempt, so nothing above it changes. T-3.7 gave songs an
+  owner and answers `404` for somebody else's; none of that was in this path,
+  because this door does not go through our API at all.
+- **`MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` were swapped**, so every job died
+  at `separating` in under a second with `separation_failed`. Reproduced
+  locally by swapping them: `modal.exception.AuthError: Token ID is malformed`,
+  the deployed message exactly. Two changes came out of it: `AuthError` is now
+  `separation_unavailable` - the operator's problem, not the recording's, which
+  is T-1.7's distinction and matters because the screen was telling a user to
+  retry something that could never work - and `create_app` **refuses to start**
+  in production when the backend is `modal` with no tokens, the same way it
+  refuses without `SUPABASE_URL`.
+- **Every transcription in the cloud had been failing, silently, from the first
+  deploy.** Groq answered `400 file must be one of the following types` because
+  `S3Storage.local_path` named its downloaded copy by a hash with **no
+  extension** - the service types the upload by its filename. Locally the file
+  is the real one, suffix and all, so this could only ever appear in the cloud,
+  and it appears as a song with no words rather than as a failure. The copy now
+  keeps the key's suffix, and `GroqTranscriber` refuses a file with no
+  extension itself rather than letting the service answer with a list of types.
+  Worth knowing: **a 400 does not move Groq's `x-ratelimit-remaining-requests`**,
+  which is what made "the key is missing" look true from outside for an hour.
+- **`GET /jobs/{id}/events` cannot authenticate, so D-18's SSE is dead in any
+  deployment with accounts.** `EventSource` cannot send an `Authorization`
+  header and the session cookie is on the web app's domain, not the API's, so
+  the stream is refused before it opens and the progress screen sits on
+  "מתחבר מחדש…" for the whole job. **T-1.11's polling fallback carried it**,
+  which is why nothing looked broken and why this survived T-3.7 unnoticed.
+  Deliberately **not** fixed here: the cheap fix is the token in a query string,
+  which is the one thing this project has been careful never to do, and the
+  honest one is `fetch` with a `ReadableStream` instead of `EventSource` -
+  its own task, not part of a deployment.
+- Render's free instance **sleeps**: a cold `/system/health` took **32.7s**
+  against 0.5s warm. That is `T-3.11`, measured rather than assumed.

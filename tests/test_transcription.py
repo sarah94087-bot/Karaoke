@@ -202,6 +202,21 @@ def test_a_missing_file_is_a_clear_error(tmp_path: Path):
         GroqTranscriber(api_key="test").transcribe(tmp_path / "nothing.mp3")
 
 
+def test_a_file_with_no_extension_is_refused_before_it_is_sent(tmp_path: Path, sent: list):
+    """T-3.10. The service reads the format from the filename, and answers a
+    name with no suffix by listing the types it accepts - which reads as "your
+    audio is wrong" for a file that is perfectly good. The object store's
+    downloaded copy was named by a hash, so every cloud transcription failed
+    this way while every local one worked."""
+    audio = tmp_path / "29e30bfa4274c47e"
+    audio.write_bytes(b"ID3")
+
+    with pytest.raises(TranscriptionError, match="extension"):
+        GroqTranscriber(api_key="test").transcribe(audio)
+
+    assert sent == [], "nothing should have been sent"
+
+
 def test_the_multipart_body_carries_the_bytes_unchanged(tmp_path: Path):
     """The one part of an HTTP client that is easy to get subtly wrong."""
     audio = tmp_path / "a.mp3"

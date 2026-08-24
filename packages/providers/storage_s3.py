@@ -29,7 +29,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
@@ -357,7 +357,16 @@ class S3Storage:
             return cached
         if self._cache_dir is None:
             self._cache_dir = Path(tempfile.mkdtemp(prefix="karuki-s3-"))
-        target = self._cache_dir / hashlib.sha256(checked.encode()).hexdigest()[:16]
+        # The suffix is part of the name, not decoration. The local backend
+        # hands back the real file, extension and all, so everything downstream
+        # was written against a path that says what it is - and one caller types
+        # its upload by that name: Groq answers a file called `29e30bfa4274c47e`
+        # with `400 file must be one of the following types`, which is how this
+        # was found (T-3.10, on the deployed stack, where every transcription
+        # had been failing silently while the local one worked).
+        target = self._cache_dir / (
+            hashlib.sha256(checked.encode()).hexdigest()[:16] + PurePosixPath(checked).suffix
+        )
         target.write_bytes(self._call("GET", checked))
         self._cache[checked] = target
         return target

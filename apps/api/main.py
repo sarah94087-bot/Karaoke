@@ -138,6 +138,37 @@ def create_app() -> FastAPI:
             "is the same user and songs are not protected from one another"
         )
 
+    # The same argument one service along. The image has no torch by design
+    # (T-1.6), so `modal` is the only backend a deployment can separate with,
+    # and a `modal` backend with no token cannot separate at all - it fails on
+    # the first song, instantly, with nothing in the row to say why.
+    #
+    # This check exists because that happened. Render *silently skips* a
+    # `sync: false` variable that is left blank, which had already cost this
+    # project a deployment once (KARUKI_CORS_ORIGINS, answered every preflight
+    # with a 400) - and then cost it a second one here. A variable that is
+    # missing is worth one loud line at startup rather than a mystery per song.
+    needs_gpu_credentials = not settings.is_local and settings.separation_backend == "modal"
+    if needs_gpu_credentials and not (
+        os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET")
+    ):
+        raise RuntimeError(
+            "KARUKI_SEPARATION_BACKEND=modal needs MODAL_TOKEN_ID and MODAL_TOKEN_SECRET: "
+            "without them every job fails at the separation step"
+        )
+
+    # A warning and not a refusal, because T-2.3 made "no key" a real
+    # configuration: transcription is the fallback for the songs the open
+    # lyrics database does not have, and a deployment may choose to do without
+    # it. But choosing it by accident is the likelier story - this deployment
+    # asked for `groq` and was given no key, and the first song came out with
+    # no words and nothing anywhere saying why.
+    if settings.transcription_backend == "groq" and not os.getenv("GROQ_API_KEY"):
+        log.warning(
+            "KARUKI_TRANSCRIPTION_BACKEND=groq but GROQ_API_KEY is not set: "
+            "songs the lyrics database does not know will have no words"
+        )
+
     app = FastAPI(
         title="karuki API",
         version=settings.version,

@@ -188,6 +188,16 @@ class GroqTranscriber:
             )
         if not audio.is_file():
             raise TranscriptionError(f"{audio} is not a file")
+        if not audio.suffix:
+            # The service types the upload by the filename in the multipart
+            # body, and answers a name with no extension with a 400 that
+            # describes the accepted *types* rather than the missing suffix.
+            # Said here instead, because the request is otherwise perfect and
+            # the reply reads like the audio is wrong.
+            raise TranscriptionError(
+                f"{audio.name} has no extension: the service reads the format from the "
+                "filename, so the file has to keep the suffix of the object it came from"
+            )
 
         size = audio.stat().st_size
         if size > MAX_UPLOAD_BYTES:

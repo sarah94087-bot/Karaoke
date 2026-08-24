@@ -245,6 +245,18 @@ def test_local_path_downloads_once_and_keeps_the_file(tmp_path: Path):
     assert len(opener.requests) == 1
 
 
+def test_the_downloaded_copy_keeps_the_key_s_extension(tmp_path: Path):
+    """T-3.10, found on the deployed stack. The downloaded name is a hash, and
+    a hash with no suffix does not say what the file is - which is fine for
+    ffmpeg, which reads the bytes, and fatal for the transcription service,
+    which types the upload by its filename and answered `400 file must be one
+    of the following types` to every song processed in the cloud."""
+    storage, _ = store(b"RIFF....")
+
+    assert storage.local_path("songs/a/normalised.wav").suffix == ".wav"
+    assert storage.local_path("songs/a/stems/vocals.mp3").suffix == ".mp3"
+
+
 def test_replacing_an_object_drops_the_copy_this_process_downloaded(tmp_path: Path):
     """A re-run of separation writes the same key with different audio."""
     storage, opener = store(b"first")

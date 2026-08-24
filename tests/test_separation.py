@@ -205,6 +205,23 @@ class FakeRemote:
         }
 
 
+class FakeAuthError(Exception):
+    """`modal.exception.AuthError`, which is what a client with no token raises.
+
+    Kept in the fake module below rather than caught by name, so the backend's
+    `except modal.exception.AuthError` is the real expression it would need
+    against the real client.
+    """
+
+
+def fake_modal_module(function: object) -> type:
+    return type(
+        "modal",
+        (),
+        {"Function": function, "exception": type("exception", (), {"AuthError": FakeAuthError})},
+    )
+
+
 def install(monkeypatch: pytest.MonkeyPatch, remote: FakeRemote) -> FakeRemote:
     class FakeFunction:
         @staticmethod
@@ -212,9 +229,7 @@ def install(monkeypatch: pytest.MonkeyPatch, remote: FakeRemote) -> FakeRemote:
             assert (app, function) == ("karuki-separation", "separate_to_storage")
             return remote
 
-    monkeypatch.setitem(
-        __import__("sys").modules, "modal", type("modal", (), {"Function": FakeFunction})
-    )
+    monkeypatch.setitem(__import__("sys").modules, "modal", fake_modal_module(FakeFunction))
     return remote
 
 
@@ -335,11 +350,28 @@ def test_an_unreachable_call_becomes_a_separation_error(
         def from_name(app: str, function: str):
             raise RuntimeError("modal is unreachable")
 
-    monkeypatch.setitem(
-        __import__("sys").modules, "modal", type("modal", (), {"Function": Exploding})
-    )
+    monkeypatch.setitem(__import__("sys").modules, "modal", fake_modal_module(Exploding))
 
     with pytest.raises(SeparationError):
+        ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
+
+
+def test_no_gpu_credentials_is_unavailable_and_not_a_failure(
+    cloud: LocalStorage, monkeypatch: pytest.MonkeyPatch
+):
+    """T-3.10, found live. A deployment whose Modal token was never set fails
+    every job at `separating` in 0.0s, and `separation_failed` tells the user
+    their recording is the problem and to try again - which cannot ever work.
+    It is the operator's problem, so it is the operator's code."""
+
+    class NoToken:
+        @staticmethod
+        def from_name(app: str, function: str):
+            raise FakeAuthError("Token missing. Could not authenticate client.")
+
+    monkeypatch.setitem(__import__("sys").modules, "modal", fake_modal_module(NoToken))
+
+    with pytest.raises(SeparationUnavailable, match="credentials"):
         ModalSeparator().separate(cloud, SOURCE_KEY, TARGETS)
 
 

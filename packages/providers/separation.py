@@ -228,6 +228,15 @@ class ModalSeparator:
             # the work finishes rather than after it. D-25 in miniature - the
             # platform is the queue, and this is its ticket.
             call = remote.spawn(source_url, stem_urls)
+        except modal.exception.AuthError as exc:
+            # No credentials is the operator's problem, not the recording's -
+            # the same distinction T-1.7 drew between `separation_unavailable`
+            # and `separation_failed`, and T-2.3 drew again for a missing Groq
+            # key. Measured: a client with no token raises this in 0.0s, before
+            # anything reaches Modal, so the user sees "we could not separate
+            # this file, try again" for a song that is perfectly fine and a
+            # retry that cannot ever work. T-3.10 shipped exactly that.
+            raise SeparationUnavailable(f"the GPU backend has no credentials: {exc}") from exc
         except Exception as exc:
             raise SeparationError(f"the remote GPU call failed: {exc}") from exc
 

@@ -66,6 +66,13 @@ services:
       # so `local` here would mean a service that cannot separate at all.
       - key: KARUKI_SEPARATION_BACKEND
         value: modal
+      # These two are secrets, so they cannot be values here the way the CORS
+      # origins had to become one - and they are therefore subject to the same
+      # trap, which caught this project a second time: left blank in the
+      # dashboard, Render skips them silently, and every job then fails at the
+      # separation step with nothing on the screen to say why. `create_app`
+      # now refuses to start without them, which turns that into one line in
+      # the deploy log.
       - key: MODAL_TOKEN_ID
         sync: false
       - key: MODAL_TOKEN_SECRET
