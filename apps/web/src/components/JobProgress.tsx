@@ -5,15 +5,22 @@ import { useEffect, useState } from "react";
 
 import type { Dictionary } from "@/i18n";
 import { type JobStatus, getJob, jobEventsUrl, retryJob } from "@/lib/api";
+import { readCookie } from "@/lib/auth";
 import { type SongState, errorText, stateLabel } from "@/lib/song";
+import { readEventStream } from "@/lib/sse";
 
 /**
  * The progress screen: chapter 8's "live stages in Hebrew, and a button that
  * lights up at PLAYABLE".
  *
  * Live over SSE (D-18) with polling as the fallback. The fallback is not
- * decoration: EventSource is the first thing a corporate proxy breaks, and a
- * progress bar that silently stops is indistinguishable from a job that hung.
+ * decoration: a streamed response is the first thing a corporate proxy breaks,
+ * and a progress bar that silently stops is indistinguishable from a job that
+ * hung. It also proved to be load-bearing - between T-3.7 and T-3.11 the
+ * stream could not authenticate at all and this fallback was carrying every
+ * job on its own, which is why nothing looked broken. `lib/sse.ts` has that
+ * story; the short version is that the stream now travels by `fetch`, with the
+ * token in a header where it belongs.
  */
 
 const POLL_MS = 2000;
@@ -45,11 +52,10 @@ export function JobProgress({
 
     let stopped = false;
     let poller: ReturnType<typeof setInterval> | undefined;
+    const abort = new AbortController();
 
-    const source = new EventSource(jobEventsUrl(jobId));
-
-    const apply = (event: MessageEvent) => {
-      const data = JSON.parse(event.data) as {
+    const apply = (raw: string) => {
+      const data = JSON.parse(raw) as {
         state: JobStatus["state"];
         current_step: JobStatus["current_step"];
         progress: number;
@@ -66,14 +72,12 @@ export function JobProgress({
       }));
     };
 
-    for (const name of ["snapshot", "progress", "playable", "ready", "failed"]) {
-      source.addEventListener(name, apply as EventListener);
-    }
-
-    source.onerror = () => {
-      // EventSource retries by itself, so an error here is not necessarily
-      // fatal. What it does mean is that we should stop trusting the stream as
-      // the only source of truth.
+    const startPolling = () => {
+      // The stream is gone, whatever the reason - a proxy that breaks
+      // streaming, a dropped connection, a token the API no longer accepts.
+      // From here the screen is driven by asking, which is slower and works
+      // everywhere. This is T-1.11's fallback and it is now the *only*
+      // recovery, because a hand-read stream does not reconnect by itself.
       if (stopped) return;
       setConnection("polling");
       poller ??= setInterval(() => {
@@ -85,9 +89,23 @@ export function JobProgress({
       }, POLL_MS);
     };
 
+    // `readEventStream` and not `EventSource`: the endpoint needs a bearer
+    // token and EventSource cannot send one. See `lib/sse.ts`.
+    readEventStream(jobEventsUrl(jobId), {
+      token: readCookie()?.accessToken,
+      signal: abort.signal,
+      onMessage: ({ event, data }) => {
+        if (["snapshot", "progress", "playable", "ready", "failed"].includes(event)) apply(data);
+      },
+    })
+      // The server closes the stream when the job finishes, and by then the
+      // `ready` or `failed` message has already been applied - so a clean end
+      // is not a reason to start polling.
+      .catch(startPolling);
+
     return () => {
       stopped = true;
-      source.close();
+      abort.abort();
       if (poller !== undefined) clearInterval(poller);
     };
   }, [jobId, finished]);
