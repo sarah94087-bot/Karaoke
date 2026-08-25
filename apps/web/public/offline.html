@@ -1,0 +1,65 @@
+<!doctype html>
+<!--
+  What an installed app shows when there is no network (T-5.3).
+
+  Plain HTML in `public/` rather than a page: it has to render when nothing can
+  be reached, which rules out anything the server takes part in. It is also the
+  one place in this app where Hebrew is written outside the dictionary, and
+  that is the reason - a translation file cannot be fetched here either. Two
+  sentences, and they are about the connection rather than about the product.
+
+  The colours are copied from `globals.css` for the same reason. A standalone
+  window paints this over the whole screen, so a white flash would be the most
+  visible thing about it.
+-->
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#10101a" />
+    <title>קריוקי</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-block-size: 100dvb;
+        display: grid;
+        place-content: center;
+        gap: 1rem;
+        padding-inline: 1.5rem;
+        text-align: center;
+        background: #10101a;
+        color: #f2f2f7;
+        font-family: "Segoe UI", "Arial Hebrew", "Noto Sans Hebrew", system-ui, sans-serif;
+        line-height: 1.6;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.6rem;
+      }
+      p {
+        margin: 0;
+        color: #a0a0b4;
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        justify-self: center;
+        margin-block-start: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        border: 0;
+        border-radius: 12px;
+        background: #7c5cff;
+        color: #fff;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>אין חיבור לאינטרנט</h1>
+    <p>השירים נמצאים בענן, אז צריך חיבור כדי לפתוח אותם.</p>
+    <button type="button" onclick="location.reload()">נסו שוב</button>
+  </body>
+</html>

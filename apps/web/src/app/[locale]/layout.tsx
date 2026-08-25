@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 
 import { AccountBar } from "@/components/AccountBar";
 import { ErrorReporting } from "@/components/ErrorReporting";
+import { ServiceWorker } from "@/components/ServiceWorker";
 import { directionOf, isLocale, locales } from "@/i18n/config";
 import { getDictionary } from "@/i18n";
 
@@ -32,8 +33,24 @@ export async function generateMetadata({
   return {
     title: dictionary.app.name,
     description: dictionary.app.tagline,
+    // T-5.3. iOS ignores the manifest's icons and reads this link instead,
+    // which is why the icon exists in two places rather than one.
+    icons: { apple: "/apple-touch-icon.png" },
+    // What iOS reads in place of `display: standalone`: without it, adding to
+    // the home screen there opens Safari with its chrome, which is the thing
+    // "install to the home screen" is meant to remove.
+    appleWebApp: { capable: true, title: dictionary.app.name, statusBarStyle: "black-translucent" },
   };
 }
+
+/**
+ * The colour a phone paints around the app - the address bar on Android, the
+ * status bar in a standalone window. The same value as `globals.css`'s `--bg`,
+ * so the frame and the page are one surface rather than two.
+ */
+export const viewport: Viewport = {
+  themeColor: "#10101a",
+};
 
 export default async function LocaleLayout({
   children,
@@ -55,6 +72,8 @@ export default async function LocaleLayout({
         <AccountBar t={t} locale={locale} />
         {/* Renders nothing; listens for the errors nobody predicted (D-24). */}
         <ErrorReporting />
+        {/* Renders nothing; makes the app installable and fast to open (T-5.3). */}
+        <ServiceWorker />
         {children}
       </body>
     </html>

@@ -181,8 +181,11 @@ hand in both text and time.
 `T-5.2` (the A–B loop) was done out of order: it depends only on the player,
 and the rest of phase 3 was waiting on account signups.
 
-Phase 5 (polish) is open: `T-5.1` (full screen and the playback queue) and
-`T-5.2` are done; `T-5.3`, the PWA, is what is left.
+Phase 5 (polish) is closed: `T-5.1` (full screen and the playback queue),
+`T-5.2` (the A-B loop) and `T-5.3` (the PWA) are done. **Every task in the
+breakdown is now done except `T-0.2.5`, the measurement on a real phone**,
+which has been blocked on hardware since phase 0 and is also the twelfth item
+of chapter 14's checklist.
 
 Phase 3 (cloud and multiple users) is closed except for one checklist item:
 `T-3.1` to `T-3.13` are done —
@@ -1839,3 +1842,72 @@ From the attempt to make YouTube links work (2026-08-25, on top of `T-4.1`):
   datacenter address is treated *worse* by that service rather than better, so
   the deployment is not expected to differ - but that part is an inference and
   was not measured.
+
+From `T-5.3`:
+
+- **A PWA here is three files and no plugin.** `next-pwa` and its relatives
+  generate a worker, a build step and a configuration surface; what they
+  generate for this app is `public/sw.js`, and the part that matters is the
+  part a generated worker gets wrong. Same instinct as the hand-written SigV4
+  (T-3.1), SSE parser (D-18's repair) and Sentry envelope (T-3.12).
+- **The important half of a service worker is what it refuses to touch.**
+  Three kinds of request must always reach the network, and all three happen to
+  be cross-origin, which is what makes the rule short: the **API** (a cached
+  `401` from an expired session would lock somebody out of their own library
+  until they cleared storage), the **bucket** (stem links are signed and expire
+  in an hour, and each stem is megabytes against a quota), and everything else
+  that is not ours - Supabase, Sentry. `strategyFor` also refuses `/api/` and
+  any URL carrying `sig=` or `X-Amz-Signature` on *our own* origin, because
+  chapter 11 keeps the whole product runnable on one machine where the API
+  shares this origin and serves stems itself.
+- Two strategies for what is left. `/_next/static/` is content-hashed, so
+  cache-first is safe for ever and is where "opens fast" actually comes from -
+  nine chunks and a stylesheet, measured in the cache after one load.
+  Everything else of ours is network-first with the cache behind it: the
+  worklet, the icons, the manifest and every page are served under names that
+  do not change, so a deploy has to be picked up at once. **`pitch-worklet.js`
+  is the one that decides this**: T-1.12's zero-drift measurement belongs to a
+  specific version of that file, and cache-first would pin an old one silently.
+- **Development does not skip the worker, it unregisters one.** A worker is
+  scoped to an origin, and `next start` and `next dev` are the same origin on
+  this machine - so a worker left behind by a production check goes on
+  answering in development out of a cache built from a different build. That
+  failure looks exactly like an edit that did not take effect. Verified both
+  ways: production registers and controls the page, and one load of the dev
+  server leaves `workers: 0` (`controlled` goes false on the reload after,
+  because a document keeps its controller for its own lifetime).
+- `updateViaCache: "none"` on the registration. Without it a browser may serve
+  `sw.js` itself from the ordinary HTTP cache for up to a day, so a deployed
+  fix keeps handing out the previous worker's rules.
+- **The icons are drawn by `scripts/icons.py`, not committed as blobs nobody
+  can redraw.** A PNG is a zlib stream with a four-byte header per chunk, which
+  is cheaper than carrying Pillow to draw a rounded rectangle and a circle. It
+  is deliberately not part of the build: the icons change about once a year,
+  and a generated asset regenerated on every deploy is a diff nobody reads. The
+  first run drew the microphone's capsule as a half-disc - a radius larger than
+  half the shorter side inverts the corner clamp - so `rounded` now clamps it.
+- A maskable icon exists because Android crops to the launcher's shape and
+  otherwise pastes the square on a white plate, which on a dark icon reads as a
+  mistake. iOS ignores the manifest's icons entirely and needs
+  `apple-touch-icon` plus `appleWebApp`, which is why the icon is declared in
+  two places.
+- `start_url` is `/he`, not `/`: the root only redirects there, and a home
+  screen icon that spends a redirect on every launch is the opposite of what
+  this task is judged on. The name and the description come from the dictionary
+  rather than being typed again in the manifest.
+- **`public/offline.html` is the one place in this app with Hebrew outside the
+  dictionary**, and the reason is that it has to render when nothing can be
+  reached - a translation file cannot be fetched either. A standalone window
+  has no address bar, so the browser's own error page there is a dead end.
+- Verified on a **production build**, which is the only place any of this runs:
+  the worker activated and controlling, the manifest served with the Hebrew
+  name, `dir: rtl` and three icons, the cache holding nine build chunks, the
+  page, the worklet, the icons and the offline page - and **zero API entries
+  and zero signed URLs**. Then with the server stopped: `/he/upload` showed the
+  offline page, and `/he` opened from the cache with the whole library shell.
+- **What was not observed: the install prompt itself.** `beforeinstallprompt`
+  did not fire in the in-app browser pane, which is inconclusive rather than
+  negative - the listener could only be attached after load, and an embedded
+  surface need not implement the install flow at all. The three documented
+  criteria are each verified separately above. The real check is a phone, which
+  is `T-0.2.5` and has been blocked on hardware since phase 0.
