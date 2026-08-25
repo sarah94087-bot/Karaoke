@@ -11,6 +11,7 @@ import tempfile
 import threading
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -74,8 +75,9 @@ class StubCatalogue:
 
     name = "stub"
 
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(self, error: Exception | None = None, artist: str | None = None) -> None:
         self.error = error
+        self.artist = artist
 
     def search(self, title: str, artist: str | None = None) -> list[Candidate]:
         if self.error is not None:
@@ -83,7 +85,7 @@ class StubCatalogue:
         return [
             Candidate(
                 title="שיר",
-                artist=None,
+                artist=self.artist,
                 album=None,
                 duration_sec=100.0,
                 synced_lyrics=LRC,
@@ -269,6 +271,42 @@ async def test_a_song_the_database_knows_arrives_already_timed(sessions, storage
     assert lyrics.source == "db"
     assert song.lyrics_status == LyricsStatus.LINE
     assert job.state == JobState.READY
+
+
+async def test_the_lyrics_database_also_names_the_song(sessions, storage, tmp_path):
+    """T-4.2: a match is the only evidence we will ever get about what a song is
+    *called*. `ריטה - שיר` is a file name until the database identifies the
+    recording on the title, the artist and the measured duration."""
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+        song.title = "ריטה - שיר"
+        await session.commit()
+
+        await run_job(
+            session, storage, StubSeparator(), job, song, catalogue=StubCatalogue(artist="ריטה")
+        )
+
+    assert (song.title, song.artist) == ("שיר", "ריטה")
+
+
+async def test_a_song_somebody_has_named_is_not_renamed_by_the_database(
+    sessions, storage, tmp_path
+):
+    """The write-back lands minutes after the song is on the screen, which is
+    long enough for a person to have corrected the name themselves - and having
+    that overwritten while they are looking at it is how somebody stops trusting
+    the field."""
+    async with sessions() as session:
+        song, job = await ingested(session, storage, tmp_path)
+        song.title = "ריטה - שיר"
+        song.details_edited_at = datetime.now(UTC)
+        await session.commit()
+
+        await run_job(
+            session, storage, StubSeparator(), job, song, catalogue=StubCatalogue(artist="ריטה")
+        )
+
+    assert (song.title, song.artist) == ("ריטה - שיר", None)
 
 
 async def test_a_lyrics_database_that_fails_does_not_fail_the_job(sessions, storage, tmp_path):

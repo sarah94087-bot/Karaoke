@@ -90,6 +90,13 @@ class Song(Base):
     is_playable: Mapped[bool] = mapped_column(default=False)
     lyrics_status: Mapped[str] = mapped_column(String(16), default=LyricsStatus.PENDING)
 
+    # T-4.2: when a person last typed the title or the artist themselves. Both
+    # are filled automatically from three sources, the last of which (the open
+    # lyrics database) lands minutes after the song is already on screen - so
+    # this is what stops a machine from overwriting a correction made in
+    # between. Null means nobody has typed here yet.
+    details_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Null means never sung. D-30 offers the least-played songs when the storage
     # is full, and chapter 9 removes one nobody has played for six months; both

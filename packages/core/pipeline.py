@@ -24,6 +24,7 @@ from packages.core.enums import JobStep, LyricsSource
 from packages.core.events import EventBus, EventType, JobEvent
 from packages.core.lyrics import get_lyrics
 from packages.core.lyrics_lookup import lookup_lyrics
+from packages.core.metadata import name_from_catalogue
 from packages.core.models import Job, Song
 from packages.core.stems import record_stems, separate, source_for
 from packages.core.transcribe import (
@@ -105,7 +106,15 @@ async def run_job(
         # costs one HTTP call. Moved ahead of the separation in T-2.4 so that
         # its answer can decide whether to transcribe at all.
         if catalogue is not None:
-            await lookup_lyrics(session, song, catalogue)
+            found = await lookup_lyrics(session, song, catalogue)
+            if found is not None:
+                # T-4.2: a match is also the only evidence we will ever get
+                # about what this song is *called*. `ריטה - שביר.mp3` is a file
+                # name until the database identifies it on the title, the artist
+                # and the measured duration - and then it is a song by ריטה.
+                # `name_from_catalogue` is where the narrowness lives; a person
+                # who has already typed here is never overwritten.
+                name_from_catalogue(song, found.match.candidate)
             await session.commit()
 
         # D-29, and the only reason the mix is transcribed at all: it starts now

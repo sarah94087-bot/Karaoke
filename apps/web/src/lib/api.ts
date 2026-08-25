@@ -393,6 +393,32 @@ export function importSong(url: string): Promise<UploadResult> {
   });
 }
 
+export interface SongDetails {
+  id: string;
+  title: string;
+  artist: string | null;
+  duration_sec: number | null;
+  details_edited: boolean;
+}
+
+/**
+ * Correct the name or the artist (T-4.2).
+ *
+ * A PATCH, and the difference matters: a field that is not sent is left alone,
+ * while `artist: ""` clears it. The screen sends only what was edited, so
+ * "I only fixed the artist" cannot be read as "the title is now blank".
+ */
+export function updateSongDetails(
+  songId: string,
+  changes: { title?: string; artist?: string },
+): Promise<SongDetails> {
+  return request<SongDetails>(`/songs/${songId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+}
+
 export interface Features {
   import_enabled: boolean;
   import_sources: string[];

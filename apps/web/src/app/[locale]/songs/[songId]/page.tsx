@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Player } from "@/components/Player";
 import { SongFacts } from "@/components/SongFacts";
+import { SongTitle } from "@/components/SongTitle";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
 import { ApiError, getLyrics, getSong, isPending } from "@/lib/api";
@@ -34,7 +35,10 @@ export default async function SongPage({
     return (
       <main>
         <header className="page-header">
-          <h1>{song.title}</h1>
+          {/* T-4.2: the name and the artist are filled automatically and are
+              editable right here, because here is where somebody notices they
+              are wrong. */}
+          <SongTitle songId={songId} title={song.title} artist={song.artist} t={t} />
           <div className="header-actions">
             {/* The editor is the other half of phase 2: phase 0 measured that
                 automatic Hebrew alignment will not be good enough to leave
@@ -47,7 +51,6 @@ export default async function SongPage({
             </Link>
           </div>
         </header>
-        {song.artist ? <p className="tagline">{song.artist}</p> : null}
 
         {/*
           T-1.15: measured during processing and stored on the song. Shown next

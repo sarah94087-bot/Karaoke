@@ -118,6 +118,10 @@ async def import_song(
             filename=f"{imported.title}{imported.suffix}",
             suffix=imported.suffix,
             title=imported.title,
+            # Only the resolvers that read a *page* have this; the `direct` one
+            # has a file name and nothing else, and says so by sending None -
+            # which is what lets the file's own tags win over it (T-4.2).
+            artist=imported.artist,
             source_type=SourceType.URL,
             # The address as the source gave it back, so a redirect chain or a
             # share link is recorded as the thing it actually resolved to.

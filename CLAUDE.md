@@ -196,9 +196,11 @@ was measured rather than assumed, errors that report themselves, and chapter
 smoke test passed in full on 2026-08-25, eight checks with nothing skipped -
 and the twelfth is the phone (`T-0.2.5`), still waiting on hardware.
 
-Phase 4 (import) is open: `T-4.1` is done — a song can be added from a link,
-behind `KARUKI_IMPORT`, which removes the route and the form when it is off.
-`T-4.2` (title, artist and length filled in and correctable by hand) is next.
+Phase 4 (import) is closed: `T-4.1` and `T-4.2` are done — a song can be added
+from a link, behind `KARUKI_IMPORT`, which removes the route and the form when
+it is off; and the title, the artist and the length fill themselves from the
+file's tags, the importer and the open lyrics database, with a person's
+correction beating all three.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
@@ -1658,3 +1660,65 @@ From `T-4.1`:
   answers in 12.6s for 8.9MB. Same shape as the Groq `User-Agent` finding - some
   hosts have an opinion about who is asking - so a failing import is worth
   trying against a second address before believing the code is wrong.
+From `T-4.2`:
+
+- **Until this task the project threw away what the file says it is.**
+  `normalise` strips metadata on the way to the wav - deliberately, an upload's
+  tags are the user's and nothing downstream wants them - and the title came
+  from the file name. `packages/audio/tags.py` reads the *original* with one
+  extra `ffprobe` (~50ms) on a path already running ffmpeg over the whole file.
+- **Four sources, in this order: the importer, the file's tags, the open lyrics
+  database, and last the file name.** Which is which lives in one place,
+  `packages/core/metadata.py`, and above all four sits a person: any correction
+  stamps `songs.details_edited_at` and every automatic write checks it.
+- **A file name is never split into artist and title.** T-2.2 already decided
+  that question cannot be answered without asking the database -
+  `matching.readings` tries `X - Y` both ways round for exactly this reason - so
+  writing a guess onto the row would make that decision twice, in two places,
+  and the second one would be wrong about half the time. A file name fills the
+  title and leaves the artist empty.
+- **The one thing that can resolve it is a catalogue match**, because that match
+  was made on the title, the artist *and* the measured duration. So a confident
+  match may rename the song, under two narrow rules: the artist is filled only
+  when there is none (a tag was written about *this file*; a database row is
+  about a recording that merely matched), and the title is replaced only when
+  ours **contains** theirs after normalising - `ריטה - שביר` contains `שביר`, so
+  the extra words are the file name's. A merely *similar* title is left alone;
+  `מעמקים` scores 0.923 against `ממעמקים` and is a different word (T-2.2), and
+  "similar" is exactly where a wrong match would land.
+- `details_edited_at` exists because the catalogue write-back lands **minutes
+  after the song is already on the screen**. A person can perfectly well have
+  fixed the name in between, and having it overwritten by a machine while they
+  are looking at it is how somebody stops trusting a field.
+- **The corrections are `PATCH /songs/{id}`, and loud rather than clamped.**
+  T-1.16 clamps the player settings because an auto-save must never fail a
+  session; this is a button somebody pressed with a name they typed. An empty
+  title is `song_title_empty`, an absurd one is `song_name_too_long`, and an
+  empty *artist* is a real answer that clears the field. A field that is not in
+  the body is left alone - which is the whole reason it is a PATCH: a PUT makes
+  "I only changed the artist" indistinguishable from "the title is now blank".
+- **Two rules came from the five real Hebrew mp3s on this machine rather than
+  from imagination.** Two of them carried `albumaty.com` and
+  `newsmusic.blogspot.com` in the artist field - a download site's watermark,
+  not a name - so a value that is a bare web address reads as no value. And two
+  carried `אבי לרנר/חדשות המוזיקה להורדה`: ID3v2.3 says a slash separates
+  performers, so taking the first is reading the format rather than guessing.
+  `AC/DC` is the counterexample, and a segment of one or two characters is what
+  tells them apart - a heuristic, and part of why the field is editable.
+- Measured on those five: before, five titles from file names and **zero
+  artists**; after, `בני פרידמן, ברוך לוין - ושבו בנים.mp3` becomes `ושבו בנים`
+  by `בני פרידמן, ברוך לוין`, `JX_w2zDaAXY.mp3` becomes `יגאל בשן - תן לי`
+  instead of a YouTube id, and **three of five have an artist**. The two with no
+  artist tag stay empty rather than guessed.
+- The editing is **in place on the song page**, not on a screen of its own: the
+  name is already there and that is where somebody notices it is wrong. Sending
+  them elsewhere to fix it is how a field stays wrong.
+- Verified live end to end: the tagged excerpt uploaded through the real API
+  arrived as `ושבו בנים` / `בני פרידמן, ברוך לוין` / 30s with nothing typed,
+  and in a real browser "עריכת פרטים" → artist to `בני פרידמן` → save wrote
+  `PATCH 200`, stamped `details_edited_at`, and the name survived a reload.
+- **What could not be verified live: the catalogue write-back.** LRCLIB knows
+  none of the five songs on this machine - asked, all five came back `None` -
+  and the write-back needs a match. It rests on `tests/test_pipeline.py`, which
+  runs the real pipeline against a stub catalogue and covers both the rename and
+  the refusal to rename a song somebody has already named.

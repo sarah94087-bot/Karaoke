@@ -131,7 +131,14 @@
   "song": {
     "originalKey": "סולם מקורי",
     "bpm": "קצב מקורי",
-    "bpmUnit": "פעימות לדקה"
+    "bpmUnit": "פעימות לדקה",
+    "editDetails": "עריכת פרטים",
+    "titleLabel": "שם השיר",
+    "artistLabel": "אמן",
+    "artistUnknown": "לא ידוע",
+    "saveDetails": "שמירה",
+    "cancelDetails": "ביטול",
+    "savingDetails": "שומר…"
   },
   "job": {
     "state": {
@@ -209,7 +216,9 @@
     "import_forbidden_address": "הכתובת הזאת מובילה לרשת פנימית, ולכן לא נביא ממנה קובץ.",
     "import_not_audio": "מה שיש בכתובת הזאת אינו קובץ אודיו.",
     "import_too_large": "הקובץ בכתובת הזאת גדול מדי.",
-    "import_failed": "הייבוא מהקישור נכשל. אפשר לנסות שוב או להעלות קובץ."
+    "import_failed": "הייבוא מהקישור נכשל. אפשר לנסות שוב או להעלות קובץ.",
+    "song_title_empty": "לשיר צריך שם.",
+    "song_name_too_long": "השם ארוך מדי. עד 200 תווים."
   },
   "auth": {
     "signInTitle": "כניסה",

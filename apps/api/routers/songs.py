@@ -31,9 +31,12 @@ from packages.audio.normalize import (
     ToolMissing,
     normalise,
 )
+from packages.audio.tags import MAX_LENGTH as MAX_NAME_LENGTH
+from packages.audio.tags import clean, read_tags
 from packages.core import jobs as job_service
 from packages.core import quota
 from packages.core.enums import SongStatus, SourceType, StemKind
+from packages.core.metadata import Details, details_for, edited_now
 from packages.core.models import Job, Song, UserSongSettings
 from packages.core.settings import get_settings, save_settings
 from packages.core.stems import stems_for
@@ -135,13 +138,23 @@ class Library(BaseModel):
     total: int
 
 
-def _title_from(filename: str | None) -> str:
-    if not filename:
-        return "ללא שם"
-    # Hebrew filenames are the normal case here, so no transliteration or
-    # slugging - the stem of the name is the best title we have until tags or
-    # the user say otherwise.
-    return Path(filename).stem.strip() or "ללא שם"
+def _details(
+    original: Path, filename: str | None, title: str | None, artist: str | None
+) -> Details:
+    """What to call the song, from the file itself where possible (T-4.2).
+
+    The file name was the only source until T-4.2 and is now the last resort:
+    almost every audio file carries a title and an artist inside it, and a tag
+    is something somebody wrote down where a file name is a guess. Reading them
+    cannot fail the upload - `read_tags` answers with empty fields for a file it
+    cannot parse, and `normalise` has already refused anything that is not audio.
+    """
+    return details_for(
+        filename=filename,
+        tags=read_tags(original),
+        title_hint=title,
+        artist_hint=artist,
+    )
 
 
 async def _spool(upload: UploadFile, destination: Path, limit: int) -> int:
@@ -374,6 +387,84 @@ async def put_settings(
     return _as_settings(saved)
 
 
+class SongDetailsIn(BaseModel):
+    """A correction to the name or the artist (T-4.2).
+
+    Both are optional and mean different things by their absence: a field that
+    is not in the body is left alone, and `artist: ""` clears it. That
+    distinction is why this is a PATCH and not a PUT - the screen sends what
+    was edited, and a PUT would make "I only changed the artist" indistinguish-
+    able from "the title is now blank".
+    """
+
+    title: str | None = None
+    artist: str | None = None
+
+
+class SongDetails(BaseModel):
+    id: uuid.UUID
+    title: str
+    artist: str | None
+    duration_sec: int | None = Field(
+        description="Measured off the normalised audio, and deliberately not editable: it is "
+        "the one field here that is a measurement rather than a claim."
+    )
+    details_edited: bool = Field(
+        description="True once a person has typed here. Everything that fills these fields "
+        "automatically - tags, the importer, the open lyrics database - stops when it is."
+    )
+
+
+@router.patch(
+    "/songs/{song_id}",
+    response_model=SongDetails,
+    summary="Correct the name or the artist",
+)
+async def patch_song(
+    session: SessionDep, user_id: UserDep, song_id: uuid.UUID, body: SongDetailsIn
+) -> SongDetails:
+    """The "correctable by hand" half of T-4.2.
+
+    Loud rather than clamped, unlike the player settings (T-1.16): this is a
+    button somebody pressed with a name they typed, and quietly storing
+    something other than what they wrote is worse than saying it did not go in.
+
+    Any correction here stamps `details_edited_at`, which turns off every
+    automatic write for this song - including the one the lyrics database makes
+    minutes later, which is the one that could otherwise land on top of a
+    person's work while they are looking at the screen.
+    """
+    song = await owned_song(session, song_id, user_id)
+    sent = body.model_fields_set
+
+    if "title" in sent:
+        title = clean(body.title)
+        if title is None:
+            raise ApiError("song_title_empty", "a song needs a name")
+        if len(body.title or "") > MAX_NAME_LENGTH:
+            raise ApiError("song_name_too_long", f"names are up to {MAX_NAME_LENGTH} characters")
+        song.title = title
+
+    if "artist" in sent:
+        if len(body.artist or "") > MAX_NAME_LENGTH:
+            raise ApiError("song_name_too_long", f"names are up to {MAX_NAME_LENGTH} characters")
+        # Cleared rather than refused: "I do not know who this is" is a real
+        # answer, and the field started empty for most songs anyway.
+        song.artist = clean(body.artist)
+
+    if sent:
+        song.details_edited_at = edited_now()
+    await session.commit()
+
+    return SongDetails(
+        id=song.id,
+        title=song.title,
+        artist=song.artist,
+        duration_sec=song.duration_sec,
+        details_edited=song.details_edited_at is not None,
+    )
+
+
 # Chapter 6's direct-upload pair. `uploads/<token>/original<suffix>` is the only
 # shape of key these will sign or accept: the client chooses none of it, so a
 # ticket cannot be talked into writing over a stem.
@@ -573,6 +664,7 @@ async def _ingest(
     filename: str | None,
     suffix: str,
     title: str | None = None,
+    artist: str | None = None,
     source_type: SourceType = SourceType.FILE,
     source_ref: str | None = None,
 ) -> SongCreated:
@@ -617,10 +709,12 @@ async def _ingest(
         # because a ticket lasts an hour and the answer can change in it.
         await _within_quota(session, user_id)
 
+        details = _details(original, filename, title, artist)
         song = Song(
             id=uuid.uuid4(),
             user_id=user_id,
-            title=title or _title_from(filename),
+            title=details.title,
+            artist=details.artist,
             source_type=source_type,
             source_ref=source_ref if source_ref is not None else filename,
             content_hash=content_hash,
