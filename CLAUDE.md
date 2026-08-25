@@ -1799,3 +1799,43 @@ From `T-5.1`:
   all three songs came back with a `last_played_at` a few seconds apart.
 - The queue button is only on a **playable** song. Queueing one that is still
   separating would put a wait in the middle of an evening.
+
+From the attempt to make YouTube links work (2026-08-25, on top of `T-4.1`):
+
+- **It does not work, and the reason is not in this code.** yt-dlp selects a
+  perfectly good stream - format 251, opus, 4,949,491 bytes for a 288s track -
+  and then YouTube's media server answers that URL with `200`,
+  `Content-Length: 145107` and `content-type: video/mp4`. Confirmed with a
+  plain `urllib` GET against the media URL, so it is not yt-dlp's download
+  logic. The `android` client, which selected a *different* 7.8MB format,
+  received **exactly the same 145,107 bytes** - an identical byte count across
+  two different formats is what says this is a stub served to a client that has
+  not passed the player challenge, rather than a download that broke. Every
+  other player client (`web_safari`, `ios`, `tv`, `web_embedded`, `mweb`)
+  refused outright with "Requested format is not available".
+- **The dangerous part was that it looked like success.** yt-dlp raised nothing,
+  the resolver returned an `Imported`, and ffmpeg normalises a 145KB stub
+  happily - so the shape of the failure was a five-second "song" that had cost
+  a GPU separation to produce. `_refuse_a_stub` now compares what landed on
+  disk against the size yt-dlp itself declared for the stream it chose, and
+  raises `import_incomplete` under `MIN_COMPLETE_FRACTION` (0.75 - loose enough
+  never to argue with `filesize_approx`, which is bitrate times duration, and
+  a stub is ~3% of its promise). A size the library does not know is not
+  evidence of anything and lets the file through.
+- **`YtDlp.fetch` never called `trust_system_certificates`.** The direct
+  resolver has called it since T-4.1; this one had not, so on this machine the
+  first real run died with "self-signed certificate in certificate chain",
+  which reads like a broken network and is not one. yt-dlp builds its own TLS
+  context, and `truststore.inject_into_ssl()` is global, so one call before it
+  opens anything is enough.
+- **So `yt-dlp` is deliberately still not a dependency and still not switched
+  on in `render.yaml`** (`KARUKI_IMPORT=direct`). Shipping it would add a large
+  dependency that tracks somebody else's site, to an image that has to stay
+  deployable on a free tier, for a resolver measured to return nothing usable.
+  What would be needed beyond that is a signed-in YouTube session or a PO-token
+  provider on the server - credentials this project does not hold and a second
+  step past terms that are not ours to decide.
+- Honest limit of the measurement: it was made from this machine's IP. A
+  datacenter address is treated *worse* by that service rather than better, so
+  the deployment is not expected to differ - but that part is an inference and
+  was not measured.

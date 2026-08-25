@@ -21,6 +21,8 @@ resolution is arithmetic rather than a DNS query, and the one test that reads a
 body replaces the opener.
 """
 
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -304,3 +306,95 @@ def test_yt_dlp_without_yt_dlp_installed_is_unavailable_and_not_a_failure(
         YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 1000)
 
     assert raised.value.code == "import_unavailable"
+
+
+def _fake_yt_dlp(written: int, declared: int | None, name: str = "original.webm"):
+    """A stand-in for the real library. No test here touches the network.
+
+    It writes `written` bytes where yt-dlp would have written the recording,
+    and reports `declared` as the size of the stream it chose - which is the
+    pair that the guard reads.
+    """
+
+    class Reader:
+        def __init__(self, options: dict[str, object]):
+            self.options = options
+
+        def __enter__(self) -> "Reader":
+            return self
+
+        def __exit__(self, *_: object) -> bool:
+            return False
+
+        def extract_info(self, url: str, download: bool = True) -> dict[str, object]:
+            template = str(self.options["outtmpl"])
+            self.path = Path(template.replace("%(ext)s", name.rsplit(".", 1)[1]))
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_bytes(b"x" * written)
+            info: dict[str, object] = {
+                "title": "בלוז כנעני",
+                "uploader": "somebody",
+                "duration": 288,
+                "webpage_url": url,
+                "format_id": "251",
+            }
+            if declared is not None:
+                info["filesize"] = declared
+            return info
+
+        def prepare_filename(self, info: dict[str, object]) -> str:
+            return str(self.path)
+
+    return types.SimpleNamespace(YoutubeDL=Reader)
+
+
+def test_a_link_that_hands_over_a_fragment_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Measured on a real YouTube link on 2026-08-25: yt-dlp chose a 4.95MB
+    stream, reported success, and wrote 145,107 bytes - a stub the service
+    hands to a client it will not serve. Nothing downstream could catch it;
+    ffmpeg normalises a stub happily and the result is a five second song that
+    has cost a GPU separation to make."""
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_yt_dlp(written=145_107, declared=4_949_491))
+
+    with pytest.raises(SourceError) as raised:
+        YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert raised.value.code == "import_incomplete"
+    # And the fragment does not sit in the staging directory afterwards.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_complete_download_is_kept(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_yt_dlp(written=4_900_000, declared=4_949_491))
+
+    imported = YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert imported.path.is_file()
+    assert imported.duration_sec == 288
+
+
+def test_a_size_the_library_does_not_know_is_not_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """An unknown size lets the file through. Blocking on a guess would refuse
+    real recordings for a number nobody supplied."""
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_yt_dlp(written=1_000, declared=None))
+
+    assert YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024).path.is_file()
+
+
+def test_yt_dlp_asks_for_the_system_certificates_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The direct resolver has always done this and this one had not, which on
+    a machine that re-signs HTTPS fails with "self-signed certificate in
+    certificate chain" - a message that reads like a broken network."""
+    asked: list[bool] = []
+    monkeypatch.setattr(import_source, "trust_system_certificates", lambda: asked.append(True))
+    monkeypatch.setitem(sys.modules, "yt_dlp", _fake_yt_dlp(written=4_900_000, declared=4_949_491))
+
+    YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert asked == [True]

@@ -50,6 +50,21 @@ TIMEOUT_SECONDS = float(os.getenv("KARUKI_IMPORT_TIMEOUT", "60"))
 CHUNK_BYTES = 256 * 1024
 MAX_REDIRECTS = 5
 
+# How much of the promised recording has to actually arrive.
+#
+# Measured on 2026-08-25 against a real YouTube link: yt-dlp selected a 4.95MB
+# opus stream, reported **success**, and wrote 145,107 bytes - and the same
+# 145,107 bytes came back for a different client that had selected a different
+# 7.8MB format, which is what says this is a stub the service hands to a client
+# it will not serve rather than a download that broke. Nothing downstream would
+# have noticed: ffmpeg normalises the stub happily, and the result is a five
+# second "song" that has cost a GPU separation to produce.
+#
+# Not 0.95, because `filesize_approx` is bitrate times duration and is allowed
+# to be wrong by a good margin. A stub is ~3% of what it promised, so anything
+# in this region separates the two without ever arguing with an estimate.
+MIN_COMPLETE_FRACTION = 0.75
+
 # What the bytes are, by what the server says they are. The suffix matters
 # downstream: ffmpeg is told the format by the file name, and T-3.10 already
 # paid for an extensionless copy once - Groq answered it with a list of the
@@ -270,6 +285,13 @@ class YtDlp:
 
     def fetch(self, url: str, into: Path, max_bytes: int) -> Imported:
         check_url(url)
+        # yt-dlp builds its own TLS context, so a machine that re-signs HTTPS
+        # fails here with "self-signed certificate in certificate chain" -
+        # which reads like a broken network and is not one. `inject_into_ssl`
+        # is global, so doing it before yt-dlp opens anything is enough. The
+        # direct resolver has always done this; this one had not, and a live
+        # run on the developer's machine is what found it.
+        trust_system_certificates()
         try:
             import yt_dlp
         except ImportError as exc:
@@ -298,6 +320,8 @@ class YtDlp:
             # What `max_filesize` does when the file is over the limit: it
             # declines to download and says nothing else.
             raise SourceError("import_too_large", "that recording is larger than we accept")
+
+        _refuse_a_stub(downloaded, info)
 
         return Imported(
             path=downloaded,
@@ -332,6 +356,37 @@ def _stream(response: IO[bytes], destination: Path, max_bytes: int) -> int:
         destination.unlink(missing_ok=True)
         raise SourceError("import_not_audio", "that address returned nothing")
     return written
+
+
+def _refuse_a_stub(downloaded: Path, info: dict[str, object]) -> None:
+    """Refuse a download that reported success and handed over a fragment.
+
+    The failure this exists for is not an error - it is a *success* that is
+    wrong, which is the kind nothing downstream can catch. yt-dlp knows how
+    large the stream it chose is; comparing that to what landed on disk is the
+    one check that can tell "the recording" from "whatever the service felt
+    like sending". A size it does not know is not evidence of anything, so an
+    unknown size lets the file through rather than blocking on a guess.
+    """
+    declared = info.get("filesize") or info.get("filesize_approx")
+    if not isinstance(declared, (int, float)) or declared <= 0:
+        return
+
+    arrived = downloaded.stat().st_size
+    if arrived >= declared * MIN_COMPLETE_FRACTION:
+        return
+
+    downloaded.unlink(missing_ok=True)
+    log.warning(
+        "import: %s promised %d bytes and gave %d - refusing the fragment",
+        info.get("webpage_url") or "that link",
+        int(declared),
+        arrived,
+    )
+    raise SourceError(
+        "import_incomplete",
+        f"that link handed over {arrived} bytes of the {int(declared)} it promised",
+    )
 
 
 def _suffix_from(url: str) -> str | None:
