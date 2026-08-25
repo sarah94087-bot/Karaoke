@@ -105,6 +105,16 @@ class Settings:
         default_factory=lambda: os.getenv("KARUKI_TRANSCRIPTION_BACKEND", "groq")
     )
 
+    # Phase 4's import module (D-01, T-4.1), and the one flag that switches it
+    # off: "none" or empty, and the routes are not registered at all - the
+    # feature is absent rather than hidden from the screens. "direct" (a plain
+    # link to an audio file) is on by default for the reason LRCLIB is;
+    # "yt-dlp" has to be added by name, because it is a large dependency
+    # reading sites whose terms are not ours to decide. A name that is neither
+    # refuses to start, rather than quietly meaning "off" - a variable that
+    # silently does nothing has already cost this project two deployments.
+    import_sources: str = field(default_factory=lambda: os.getenv("KARUKI_IMPORT", "direct"))
+
     # D-16 is Supabase (T-3.6). The API verifies its tokens against the
     # project's published keys; the URL is all it needs, and it is the same
     # value the web app has. Empty means no auth at all, which chapter 11

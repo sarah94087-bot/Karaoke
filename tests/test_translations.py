@@ -24,7 +24,10 @@ DICTIONARIES = ROOT / "apps" / "web" / "src" / "i18n" / "dictionaries"
 # Codes raised as `ApiError(...)` or `PipelineError(...)`, found by reading the
 # source rather than by listing them here - a list would be the thing that goes
 # stale, which is exactly what this file exists to catch.
-CODE_CALL = re.compile(r"(?:ApiError|PipelineError|LyricsError)\(\s*[\"']([a-z_]+)[\"']")
+CODE_CALL = re.compile(
+    r"(?:ApiError|PipelineError|LyricsError|SourceError|SourceUnavailable)"
+    r"\(\s*[\"']([a-z_]+)[\"']"
+)
 AUDIO_ERROR = re.compile(r"AudioError\(\s*[\"']([a-z_]+)[\"']")
 
 SEARCHED = ("apps/api", "packages")

@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from packages.core.db import create_engine, session_factory
 from packages.core.jobs import recover_interrupted
+from packages.providers.import_source import get_importer
 from packages.providers.lyrics_catalogue import get_catalogue
 from packages.providers.monitoring import init_monitoring
 from packages.providers.separation import get_separator
@@ -28,7 +29,7 @@ from .config import API_PREFIX, settings
 from .errors import install_error_handlers
 from .middleware import RequestIDMiddleware
 from .request_id import HEADER
-from .routers import account, files, jobs, lyrics, songs, system
+from .routers import account, files, imports, jobs, lyrics, songs, system
 from .runner import JobRunner
 
 log = logging.getLogger("karuki.api")
@@ -92,6 +93,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # One instance, shared by the job runner and by the manual search endpoint,
     # so there is a single place that decides which database is in use.
     app.state.catalogue = get_catalogue(settings.lyrics_catalogue)
+    # Phase 4, and the only thing in the app that is allowed not to be here.
+    # Built even when it is empty so that /system/features has something to
+    # answer with, and so "off" is one object saying so rather than an absence.
+    app.state.importer = get_importer(settings.import_sources)
     app.state.engine = None
     app.state.sessions = None
     app.state.runner = None
@@ -213,6 +218,12 @@ def create_app() -> FastAPI:
     app.include_router(lyrics.router, prefix=API_PREFIX)
     app.include_router(files.router, prefix=API_PREFIX)
     app.include_router(account.router, prefix=API_PREFIX)
+    # Phase 4, and the whole of what "switched off with one flag" means here:
+    # with KARUKI_IMPORT off the path is not routed, is not in the OpenAPI
+    # document, and answers the same 404 as any address that was never a route.
+    # A registered route that refuses is a feature that is still there.
+    if get_importer(settings.import_sources).enabled:
+        app.include_router(imports.router, prefix=API_PREFIX)
     # Same handler, unprefixed and unlisted: the container HEALTHCHECK and the
     # external keep-alive cron are configured once and should not have to be
     # re-pointed when the API version prefix moves.

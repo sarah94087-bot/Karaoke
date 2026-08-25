@@ -19,7 +19,13 @@
     "sending": "Uploading the file",
     "percent": "{n}%",
     "preparing": "Getting ready",
-    "finishing": "Finishing up"
+    "finishing": "Finishing up",
+    "or": "or",
+    "importTitle": "Add from a link",
+    "importHint": "The address of an audio file on the web.",
+    "importLabel": "Link",
+    "importSubmit": "Import",
+    "importWorking": "Fetching the file…"
   },
   "progress": {
     "title": "Processing the song",
@@ -195,7 +201,15 @@
     "auth_unavailable": "The accounts service is unavailable right now. Try again in a moment.",
     "monthly_songs_exhausted": "You have used this month's new songs. More become available at the start of next month.",
     "storage_full": "There is no room for another song. You can free some up on the account screen.",
-    "job_already_running": "A song is already being processed. Wait for it to finish and then upload the next one."
+    "job_already_running": "A song is already being processed. Wait for it to finish and then upload the next one.",
+    "import_disabled": "Importing from a link is switched off here.",
+    "import_unavailable": "Importing is unavailable right now. That is our problem, not your link's.",
+    "import_unsupported_url": "That link could not be read. It needs to be an http or https address that leads to audio.",
+    "import_unreachable": "That address could not be reached. Check the link and try again.",
+    "import_forbidden_address": "That address points at a private network, so nothing will be fetched from it.",
+    "import_not_audio": "What is at that address is not an audio file.",
+    "import_too_large": "The file at that address is too large.",
+    "import_failed": "The import failed. Try again, or upload a file instead."
   },
   "auth": {
     "signInTitle": "Sign in",

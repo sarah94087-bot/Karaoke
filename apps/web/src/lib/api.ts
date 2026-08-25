@@ -378,6 +378,43 @@ export function createSong(uploadKey: string, filename: string): Promise<UploadR
   });
 }
 
+/**
+ * The other way in (T-4.1): a link instead of a file.
+ *
+ * The API fetches the address itself, so there is no ticket and no PUT - one
+ * request, and the same `UploadResult` at the end of it, which is what lets the
+ * import form send the user to the same progress screen the upload form does.
+ */
+export function importSong(url: string): Promise<UploadResult> {
+  return request<UploadResult>("/songs/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}
+
+export interface Features {
+  import_enabled: boolean;
+  import_sources: string[];
+}
+
+/**
+ * Which optional modules this deployment has switched on.
+ *
+ * Asked rather than assumed, because phase 4 is specified as a module that can
+ * be switched off with one flag - and a form that posts to a route that is not
+ * there is worse than no form. A deployment that cannot answer (an old build,
+ * an API that is down) is treated as having the feature off: hiding a feature
+ * that exists is recoverable, offering one that does not is not.
+ */
+export async function getFeatures(token?: string | null): Promise<Features> {
+  try {
+    return await request<Features>("/system/features", undefined, token);
+  } catch {
+    return { import_enabled: false, import_sources: [] };
+  }
+}
+
 export interface RemovalCandidate {
   song_id: string;
   title: string;

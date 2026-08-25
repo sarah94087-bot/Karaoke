@@ -77,6 +77,13 @@ services:
         sync: false
       - key: MODAL_TOKEN_SECRET
         sync: false
+      # Phase 4's import module (T-4.1), and the flag chapter 12 asks for: this
+      # line is what switching it off looks like - `none`, one push, and the
+      # route is not registered. A value rather than `sync: false` for the
+      # reason the CORS origins are one: it is not a secret, and a blank
+      # `sync: false` is skipped silently. `yt-dlp` is deliberately not here.
+      - key: KARUKI_IMPORT
+        value: direct
       # Transcription (T-2.3). Missing is "unavailable", not "failed".
       - key: GROQ_API_KEY
         sync: false

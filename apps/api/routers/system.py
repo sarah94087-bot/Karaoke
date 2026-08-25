@@ -59,6 +59,42 @@ async def health() -> Health:
     )
 
 
+class Features(BaseModel):
+    """What this deployment can do that another one might not.
+
+    Only the optional module has an entry, and there is exactly one today. The
+    screens need it because a feature switched off has to be *absent* rather
+    than broken: an import form that answers 404 is worse than no import form.
+    """
+
+    import_enabled: bool = Field(
+        description="False when KARUKI_IMPORT is off, in which case POST /songs/import is not "
+        "routed at all - the web app hides the form rather than showing one that cannot work."
+    )
+    import_sources: list[str] = Field(
+        default_factory=list, description='Which resolvers are on, e.g. ["direct", "yt-dlp"].'
+    )
+
+
+@router.get(
+    "/system/features",
+    response_model=Features,
+    summary="Which optional modules this deployment has switched on",
+)
+async def features(request: Request) -> Features:
+    """As cheap as the health check: a look at one object built at startup.
+
+    Not folded into `/system/health` deliberately. That one is polled several
+    hundred times a day by a cron that only wants to know the process is alive,
+    and adding fields to it invites adding a field that costs something.
+    """
+    importer = getattr(request.app.state, "importer", None)
+    return Features(
+        import_enabled=bool(importer and importer.enabled),
+        import_sources=list(importer.names) if importer else [],
+    )
+
+
 class ProbeError(RuntimeError):
     """Raised by the error probe, and by nothing else.
 

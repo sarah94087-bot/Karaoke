@@ -572,12 +572,18 @@ async def _ingest(
     user_id: uuid.UUID,
     filename: str | None,
     suffix: str,
+    title: str | None = None,
+    source_type: SourceType = SourceType.FILE,
+    source_ref: str | None = None,
 ) -> SongCreated:
     """Normalise, dedup, record, and start the job.
 
-    Shared by both ways in (T-1.5's upload through the API and T-3.2's upload
-    straight to storage) because everything from here on is the same work: only
-    how the bytes arrived differs, and that difference ends at this line.
+    Shared by every way in - T-1.5's upload through the API, T-3.2's upload
+    straight to storage, and T-4.1's import from a link - because everything
+    from here on is the same work: only how the bytes arrived differs, and that
+    difference ends at this line. What a caller may still say is where the audio
+    came from and what to call it: an importer knows the title from the source
+    and has no file name to guess it from.
     """
     with tempfile.TemporaryDirectory(prefix="karuki-ingest-") as tmp:
         normalised = Path(tmp) / "normalised.wav"
@@ -614,9 +620,9 @@ async def _ingest(
         song = Song(
             id=uuid.uuid4(),
             user_id=user_id,
-            title=_title_from(filename),
-            source_type=SourceType.FILE,
-            source_ref=filename,
+            title=title or _title_from(filename),
+            source_type=source_type,
+            source_ref=source_ref if source_ref is not None else filename,
             content_hash=content_hash,
             duration_sec=int(info.duration_sec),
             status=SongStatus.PENDING,

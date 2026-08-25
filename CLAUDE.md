@@ -196,6 +196,10 @@ was measured rather than assumed, errors that report themselves, and chapter
 smoke test passed in full on 2026-08-25, eight checks with nothing skipped -
 and the twelfth is the phone (`T-0.2.5`), still waiting on hardware.
 
+Phase 4 (import) is open: `T-4.1` is done — a song can be added from a link,
+behind `KARUKI_IMPORT`, which removes the route and the form when it is off.
+`T-4.2` (title, artist and length filled in and correctable by hand) is next.
+
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
 it deletes every volume, including `db_data`. The fix is to quit and remove the
@@ -1590,3 +1594,67 @@ From `T-3.13`:
   `413 file_too_large`, and 2.8MB going browser-to-bucket in 13.7s with the
   preflight allowing the deployed origin. Checklist item 11 is done; **eleven
   of twelve**, and the twelfth is the phone.
+
+From `T-4.1`:
+
+- **The flag is the feature.** `KARUKI_IMPORT` is read in `create_app`, and with
+  it off the import router is **not included**: the path is not routed, not in
+  the OpenAPI document, and not offered by any screen. A registered endpoint
+  that refuses politely would be a feature that is still there. Worth knowing
+  before it looks like a bug: with the flag off `POST /songs/import` answers
+  **405 and not 404**, because `GET /songs/{song_id}` already claims that path -
+  and every `POST /songs/<anything>` answers the same way whether the flag is on
+  or off, so it leaks nothing. The OpenAPI document is where the absence is real.
+- **Two resolvers, and the split is the whole reason the flag exists.**
+  `direct` is a plain link to an audio file: no dependency, no account, nothing
+  anybody's terms have an opinion about, so it is on by default for the reason
+  LRCLIB is (T-2.2). `yt-dlp` reads a video page, is a large dependency that
+  tracks other people's sites, and is **off unless named** - the rule the
+  `modal` separator has, for a different reason. A name that is neither refuses
+  to start; a variable that silently does nothing has cost this project two
+  deployments already.
+- **The dangerous part of accepting a URL is not the download, it is whose
+  address it is.** An API that fetches what it is told can read what only it can
+  reach: `169.254.169.254`, a database on a private address, itself.
+  `check_url` refuses anything that is not `http(s)` and anything whose name
+  resolves to a non-global address - **every** address it resolves to, not the
+  first - and it is applied to **each hop of a redirect**, because a public URL
+  that redirects to `127.0.0.1` is the ordinary way that check is got around.
+  Honest limit, written in the code: urllib resolves the name again when it
+  connects, so a name that answers differently a second later is not caught.
+- Because of that, **a live check cannot import from `localhost`**. The address
+  the test is served from is exactly the address the importer refuses.
+- The download runs **in a thread**, for T-3.5's measured reason: a long
+  blocking read on the event loop is 39.5 seconds in which the single instance
+  answers nothing, `/system/health` included. The size limit is enforced on the
+  bytes as they arrive and only pre-checked against `Content-Length`, which is a
+  claim, and a stranger's.
+- **`_ingest` is shared with both upload routes rather than copied.** An import
+  that normalised or deduplicated even slightly differently would be a second
+  definition of what a song is. What an importer may still say is the title and
+  the source; everything else - ffmpeg, the hash, the quota, the job - is the
+  same code. So a link to a song already uploaded from a file **deduplicates**,
+  because the hash is of the normalised audio (T-1.5).
+- The API carrying these bytes is a deliberate exception to chapter 3's "the API
+  never handles audio", and there is nobody else to carry them: a browser cannot
+  fetch a third-party address and PUT it to the bucket (that is what CORS
+  prevents), and doing it on the GPU function would spend credit on a download
+  that needs no GPU.
+- `GET /system/features` is how the web app knows, rather than a second variable
+  in Vercel that could disagree with the one in Render. It is deliberately not
+  folded into `/system/health`, which a cron polls several hundred times a day
+  and which must stay the cheapest thing in the service.
+- Verified live, both ways. **Flag on**, in a browser against the real API:
+  pasted `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3`, saw
+  "מביאים את הקובץ…", and landed on the progress screen at "מפריד ערוצים" -
+  **exactly one API call for the import** (`POST /songs/import 201`) plus the
+  SSE stream, and the row reading `source_type=url`, `source_ref` the address,
+  title `SoundHelix-Song-1`, 372 seconds. **Flag off**, same browser, same page:
+  the form and its "או" divider are gone, the upload form is untouched,
+  `/system/features` says `import_enabled: false`, and the route is absent from
+  `/openapi.json`.
+- Worth knowing for the next live check: **`upload.wikimedia.org` drops the
+  connection** for this client (`RemoteDisconnected`) where soundhelix.com
+  answers in 12.6s for 8.9MB. Same shape as the Groq `User-Agent` finding - some
+  hosts have an opinion about who is asking - so a failing import is worth
+  trying against a second address before believing the code is wrong.
