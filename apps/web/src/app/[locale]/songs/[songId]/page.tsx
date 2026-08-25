@@ -63,6 +63,7 @@ export default async function SongPage({
         <Player
           song={song}
           lyrics={lyrics === null || isPending(lyrics) ? null : lyrics.lines}
+          locale={locale}
           t={t}
         />
       </main>

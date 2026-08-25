@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { QueueButton } from "@/components/QueueControls";
 import type { Dictionary } from "@/i18n";
 import type { LibrarySong } from "@/lib/api";
 import { errorText, formatDuration, stateLabel } from "@/lib/song";
@@ -48,6 +49,9 @@ export function SongRow({
       </div>
 
       <div className="song-state">
+        {/* T-5.1. Only on a song that can actually be sung: queueing one that
+            is still separating would put a wait in the middle of an evening. */}
+        {song.is_playable ? <QueueButton song={{ id: song.id, title: song.title }} t={t} /> : null}
         {song.is_playable ? <span className="badge badge-playable">{t.job.playable}</span> : null}
         <span className="badge">{stateLabel(song, t)}</span>
       </div>

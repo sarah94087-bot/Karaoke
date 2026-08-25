@@ -178,8 +178,11 @@ Phase 2 closed: `T-2.1` through `T-2.10` done — the words, from the open
 database or from transcription, aligned, running in the player, and editable by
 hand in both text and time.
 
-`T-5.2` (the A–B loop) is done out of order: it depends only on the player, and
-the rest of phase 3 is waiting on account signups.
+`T-5.2` (the A–B loop) was done out of order: it depends only on the player,
+and the rest of phase 3 was waiting on account signups.
+
+Phase 5 (polish) is open: `T-5.1` (full screen and the playback queue) and
+`T-5.2` are done; `T-5.3`, the PWA, is what is left.
 
 Phase 3 (cloud and multiple users) is closed except for one checklist item:
 `T-3.1` to `T-3.13` are done —
@@ -1722,3 +1725,77 @@ From `T-4.2`:
   and the write-back needs a match. It rests on `tests/test_pipeline.py`, which
   runs the real pipeline against a stub catalogue and covers both the rename and
   the refusal to rename a song somebody has already named.
+
+From `T-5.1`:
+
+- **The evening lives on the device, not in the database.** T-5.2 made the same
+  call about the A-B loop: a running order belongs to the half hour it was made
+  in, and nothing here is worth a table, a migration or a round trip. But unlike
+  the loop it cannot be React state - every song is its own server-rendered page,
+  so moving to the next one is a navigation and anything held in a component is
+  gone by the time the next player mounts. `localStorage` is what makes the
+  queue outlive the page that built it, and it survives a tab closed by accident
+  half way through an evening, which `sessionStorage` would not.
+- **The engine now says `ended`, which is not the same as `playing: false`.**
+  The worklet always sent an `ended` message and the engine turned it into a
+  pause. That was enough while nothing followed a song, and the difference is
+  the whole of this feature: a song running out is what starts the next one, and
+  a person pressing stop is not.
+- **A song that is not in the queue leads nowhere.** `nextAfter` answers null
+  both for the last song and for a song the queue has never heard of, so opening
+  one song from the library in the middle of an evening does not drop the singer
+  into somebody else's running order.
+- **Autoplay is in the address, not in storage.** `?autoplay=1` belongs to one
+  navigation, and the player strips it the moment it acts on it - so a reload an
+  hour later opens the song silently. It works at all because a browser keeps
+  the *document's* activation across a client-side navigation: the play press
+  that started song one is still good for song two. A full reload is not, and
+  the honest response there is to sit paused rather than to pretend.
+- **Full screen is our own layout first and the browser's second.**
+  `requestFullscreen` on an element does not exist on iOS Safari, so the class
+  has to be enough on its own; what the browser adds when it can is hiding its
+  chrome. The live check confirmed it from the other end: the automation's
+  synthetic keypress is not a user gesture, the browser refused with *"API can
+  only be initiated by a user gesture"*, the catch swallowed it, and the cinema
+  layout applied anyway - lyrics from 25.6px to 64px with the mixer, the key,
+  the tempo and the loop hidden.
+- **Letters are matched on `event.code`, never on `event.key`** (`keys.ts`). On
+  a Hebrew layout the V key produces `ה`, N produces `מ` and F produces `כ`, so
+  a shortcut table written against the letter would work on the developer's
+  layout and silently do nothing for the person the app is for - which is
+  indistinguishable from a broken feature. `physicalCode` falls back to the
+  letter only when `code` is empty, and that is not hypothetical: **browser
+  automation dispatches keys with an empty `code`**, so without the fallback
+  none of this could have been checked in a browser at all. The fallback can
+  only ever recover a Latin layout, which is the argument for `code` rather than
+  a reason to trust `key`.
+- **The shortcuts keep their hands off form controls**, and the scrubber is the
+  case that proves it: its own arrow keys scrub, and a 5-second seek on top of
+  that would be two controls fighting. Verified live - paused at 0:03 with the
+  scrubber focused, ArrowLeft moved it to 0:04, one native step and nothing
+  else. Space is also left alone on a focused button, where the browser already
+  activates it; handling both would be two toggles for one press, which looks
+  exactly like nothing happening.
+- **Forward is the direction the words are read in.** In RTL the browser already
+  reverses a range input's arrows, so ArrowLeft has to mean *later* or the two
+  controls on one screen disagree about which way time goes.
+- The keyboard handler is attached once and reads the current dispatch through a
+  ref rewritten on every render. T-2.9 lost a nudge to exactly this shape of bug,
+  and a listener closing over `mix` and `state` would go stale the same way -
+  silently, and only for the person using the keys rather than the buttons.
+- **Verified live end to end, three songs of 15s each on the local stack**: one
+  click on "התחילו את הערב" and the browser then ran, untouched, `ותהי שמחה`
+  0:00→0:14, `ושבו בנים` 0:00→0:14, `דרוש נא` 0:00→0:14 - 52 seconds, with about
+  2.5s between songs for four stems to be fetched and decoded. Each hop is a
+  client-side navigation, which is why the audio kept its permission to play.
+  The keys were then checked one at a time on a real page: `F` full screen,
+  ArrowLeft +5s, ArrowUp twice to `+2`, `-` to 95%, `V` taking the vocals fader
+  to 0% and the button to "החזר שירה", Space starting playback, `/` opening the
+  shortcut list, and `N` skipping to the next song in the queue.
+- **Every song in an evening is counted as played**, which chapter 9's retention
+  rule depends on. Worth knowing before it looks like a bug: the network log
+  shows each `POST /played` as `204` *and* `ERR_ABORTED`, because the page
+  navigates away as the response arrives. The server had already recorded it -
+  all three songs came back with a `last_played_at` a few seconds apart.
+- The queue button is only on a **playable** song. Queueing one that is still
+  separating would put a wait in the middle of an evening.

@@ -58,6 +58,12 @@ export interface PlayerState {
   semitones: number;
   tempo: number;
   ready: boolean;
+  /**
+   * The song ran out, as opposed to somebody having pressed pause. T-5.1 needs
+   * the difference: reaching the end is what moves an evening on to the next
+   * song in the queue, and a pause is a person deciding to stop.
+   */
+  ended: boolean;
 }
 
 /** Phase 0 (T-0.2.2): ~70ms so a mute does not click. */
@@ -105,6 +111,7 @@ export class PlayerEngine {
     semitones: 0,
     tempo: 1,
     ready: false,
+    ended: false,
   };
 
   private listeners = new Set<(state: PlayerState) => void>();
@@ -193,12 +200,12 @@ export class PlayerEngine {
         this.lastReport = { position: message.posSeconds, at: context.currentTime };
         this.emit({ position: message.posSeconds });
       } else if (message.type === "ended") {
-        this.emit({ playing: false });
+        this.emit({ playing: false, ended: true });
       }
     };
 
     const duration = decoded[0].buffer.duration;
-    this.emit({ ready: true, duration, position: 0, playing: false });
+    this.emit({ ready: true, duration, position: 0, playing: false, ended: false });
   }
 
   /**
@@ -229,7 +236,7 @@ export class PlayerEngine {
     // graph runs and nothing comes out, which is a confusing way to fail.
     if (this.context.state === "suspended") await this.context.resume();
     this.node.port.postMessage({ type: "play" });
-    this.emit({ playing: true });
+    this.emit({ playing: true, ended: false });
   }
 
   pause(): void {
@@ -250,7 +257,9 @@ export class PlayerEngine {
       this.context === null ? null : { position: clamped, at: this.context.currentTime };
     // Reported optimistically so the scrubber does not jump back for the ~116ms
     // until the worklet's next status message. The clock still wins.
-    this.emit({ position: clamped });
+    // Seeking also clears the end: someone who has gone back into a song that
+    // finished is singing it again, not still standing at the end of it.
+    this.emit({ position: clamped, ended: false });
   }
 
   setKey(semitones: number): void {
@@ -297,7 +306,7 @@ export class PlayerEngine {
     this.node = null;
     this.master = null;
     this.lastReport = null;
-    this.emit({ ready: false, playing: false, position: 0, duration: 0 });
+    this.emit({ ready: false, playing: false, position: 0, duration: 0, ended: false });
   }
 }
 

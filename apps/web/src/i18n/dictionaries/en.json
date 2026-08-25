@@ -57,7 +57,34 @@
       "repeating": "Repeating",
       "needEnd": "Now mark where the section ends.",
       "hint": "Mark a section to repeat it over and over."
+    },
+    "fullscreen": {
+      "enter": "Full screen",
+      "exit": "Leave full screen"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "show": "Keyboard shortcuts",
+      "hide": "Close",
+      "playPause": "Play or pause",
+      "seek": "Skip five seconds",
+      "key": "Key up or down",
+      "tempo": "Slower or faster",
+      "vocals": "Remove or restore the vocals",
+      "next": "Next song in the queue",
+      "fullscreen": "Full screen",
+      "loop": "Mark the start, the end, or clear the loop",
+      "note": "The letters are the physical key, so they work on a Hebrew layout too."
     }
+  },
+  "queue": {
+    "title": "Tonight's queue",
+    "add": "Queue",
+    "remove": "Remove",
+    "start": "Start the evening",
+    "clear": "Empty the queue",
+    "next": "Next",
+    "hint": "When a song ends the player moves to the next one on its own."
   },
   "lyrics": {
     "title": "Lyrics",

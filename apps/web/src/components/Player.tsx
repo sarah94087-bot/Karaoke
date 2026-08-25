@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { KeyTempo } from "@/components/KeyTempo";
@@ -17,6 +18,18 @@ import {
   stemUrl,
 } from "@/lib/api";
 import { LoopControls } from "@/components/LoopControls";
+import { Shortcuts } from "@/components/Shortcuts";
+import { directionOf, isLocale } from "@/i18n/config";
+import { type PlayerAction, actionFor } from "@/lib/player/keys";
+import {
+  EMPTY_QUEUE,
+  QUEUE_EVENT,
+  type Queue,
+  loadQueue,
+  nextAfter,
+  refresh,
+  storeQueue,
+} from "@/lib/player/queue";
 import { type StemMode, resolveMode, storeMode } from "@/lib/player/capability";
 import {
   type Loop,
@@ -62,14 +75,20 @@ import { formatDuration } from "@/lib/song";
 export function Player({
   song,
   lyrics: initialLyrics,
+  locale,
   t,
 }: {
   song: SongDetail;
   /** Fetched on the server with the song, so the words are on the first paint
    *  rather than one round trip later. Null when there are none yet. */
   lyrics: LyricLine[] | null;
+  /** T-5.1: moving to the next song in the queue is a navigation, and a
+   *  navigation in this app needs to know which language it is in. */
+  locale: string;
   t: Dictionary;
 }) {
+  const router = useRouter();
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<PlayerEngine | null>(null);
   const [state, setState] = useState<PlayerState | null>(null);
   // Seeded from what was saved, so the first render already shows the key and
@@ -91,6 +110,11 @@ export function Player({
   // see React state - the same refs pattern the lyrics editor uses.
   const loopRef = useRef(loop);
   loopRef.current = loop;
+  // T-5.1. The evening's running order, and the two ways this screen is bigger
+  // than one song: full screen, and the shortcut list.
+  const [queue, setQueue] = useState<Queue>(EMPTY_QUEUE);
+  const [cinema, setCinema] = useState(false);
+  const [help, setHelp] = useState(false);
 
   /**
    * Chapter 5 says settings are "saved automatically on every change in the
@@ -223,6 +247,48 @@ export function Player({
     };
   }, []);
 
+  /**
+   * The queue, read from the device (T-5.1).
+   *
+   * Read here rather than passed in because this page is server-rendered and
+   * the queue is a thing of this browser: it has to be the same list the
+   * library screen wrote, and the only place both can see is storage.
+   *
+   * The stored title is corrected against the song actually opened, so a
+   * rename (T-4.2) does not leave the evening announcing a name that no longer
+   * exists.
+   */
+  useEffect(() => {
+    const read = () => setQueue(loadQueue());
+    read();
+    window.addEventListener(QUEUE_EVENT, read);
+    window.addEventListener("storage", read);
+    return () => {
+      window.removeEventListener(QUEUE_EVENT, read);
+      window.removeEventListener("storage", read);
+    };
+  }, []);
+
+  useEffect(() => {
+    const current = loadQueue();
+    const corrected = refresh(current, { id: song.id, title: song.title });
+    if (corrected !== current) storeQueue(corrected);
+  }, [song.id, song.title]);
+
+  const next = nextAfter(queue, song.id);
+
+  /**
+   * Go to the next song, playing.
+   *
+   * `autoplay=1` is in the address rather than in storage because it belongs
+   * to this one navigation. The player strips it as soon as it has acted on
+   * it, so a reload an hour later opens the song silently.
+   */
+  const goNext = useCallback(() => {
+    if (next === null) return;
+    router.push(`/${locale}/songs/${next.id}?autoplay=1`);
+  }, [locale, next, router]);
+
   const seek = useCallback((seconds: number) => engineRef.current?.seek(seconds), []);
 
   /**
@@ -243,6 +309,79 @@ export function Player({
       void markPlayed(song.id);
     }
   }, [song.id]);
+
+  /**
+   * The end of a song is the start of the next one (T-5.1).
+   *
+   * This is the whole of "run an evening without touching the mouse": the
+   * worklet says `ended`, which the engine keeps separate from `playing:
+   * false` precisely so that a pause is not mistaken for a finish, and the
+   * queue says what follows. A song that is not in the queue ends the way it
+   * always has - nobody who opened one song from the library is dropped into
+   * somebody else's running order.
+   */
+  useEffect(() => {
+    if (state?.ended !== true) return;
+    goNext();
+  }, [state?.ended, goNext]);
+
+  /**
+   * Arriving with the music expected to start.
+   *
+   * The gesture rule is what makes this work at all: a browser will not let a
+   * page make noise on its own, but the *document* keeps its activation across
+   * a client-side navigation, so the play press that started song one is still
+   * good for song two. A full reload is not, and the honest response to that
+   * is to sit paused with the transport waiting rather than to pretend.
+   */
+  const autoplayed = useRef(false);
+  useEffect(() => {
+    if (state === null || !state.ready || autoplayed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autoplay") !== "1") return;
+    autoplayed.current = true;
+    // Once only: the address is cleaned so a reload later in the evening does
+    // not restart the song by itself.
+    params.delete("autoplay");
+    const query = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
+    void startOrPause();
+  }, [state?.ready, startOrPause]);
+
+  /**
+   * Full screen: our own layout first, the browser's if it will.
+   *
+   * The class is applied whether or not `requestFullscreen` works, and that
+   * order is deliberate - iOS Safari has no fullscreen for an element, and a
+   * feature that simply does nothing there would be the worst of the three
+   * possible outcomes. What the browser adds when it can is hiding its own
+   * chrome; what the class does everywhere is give the words the screen.
+   */
+  const toggleCinema = useCallback(() => {
+    setCinema((on) => {
+      if (on) {
+        if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => {});
+      } else {
+        void shellRef.current?.requestFullscreen?.().catch(() => {
+          // No element fullscreen here. The class still applies.
+        });
+        // Focus moves to the shell so the shortcuts land on the page rather
+        // than on whatever button was last pressed.
+        shellRef.current?.focus();
+      }
+      return !on;
+    });
+  }, []);
+
+  // Escape leaves the browser's fullscreen without telling this component, and
+  // a screen that stays in its cinema layout after that looks broken.
+  useEffect(() => {
+    const sync = () => {
+      if (document.fullscreenElement === null) setCinema(false);
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
 
   /**
    * The loop: the audio clock decides *where* we are, and two things ask.
@@ -370,6 +509,81 @@ export function Player({
     [mix, offsetMs],
   );
 
+  /**
+   * The keyboard (T-5.1), which is what makes the evening mouse-free.
+   *
+   * The handler is attached once and reads the *current* dispatch through a
+   * ref that is rewritten on every render. That is not decoration: T-2.9 lost
+   * a nudge to exactly this, two presses inside one render both computing from
+   * the same stale array. A listener registered once with a closure over `mix`
+   * and `state` would go stale the same way, silently, and only for the person
+   * using the keys rather than the buttons.
+   */
+  const dispatchRef = useRef<(action: PlayerAction) => void>(() => {});
+  dispatchRef.current = (action: PlayerAction) => {
+    const engine = engineRef.current;
+    switch (action.type) {
+      case "toggle":
+        void startOrPause();
+        break;
+      case "seek":
+        if (engine !== null) engine.seek(engine.positionNow() + action.seconds);
+        break;
+      case "key":
+        if (engine !== null) applyKey(engine.getState().semitones + action.steps);
+        break;
+      case "tempo":
+        if (engine !== null) applyTempo(engine.getState().tempo + action.delta);
+        break;
+      case "vocals":
+        applyMix(toggleVocals(mix));
+        break;
+      case "next":
+        goNext();
+        break;
+      case "fullscreen":
+        toggleCinema();
+        break;
+      case "loopStart":
+        markLoopStart();
+        break;
+      case "loopEnd":
+        markLoopEnd();
+        break;
+      case "loopClear":
+        setLoop(clearLoop());
+        break;
+      case "help":
+        setHelp((open) => !open);
+        break;
+    }
+  };
+
+  const dir = isLocale(locale) ? directionOf(locale) : "rtl";
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const action = actionFor(
+        {
+          code: event.code,
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          altKey: event.altKey,
+          target: event.target as HTMLElement | null,
+        },
+        dir,
+      );
+      if (action === null) return;
+      // Space scrolls the page and the arrows scroll it too. A shortcut that
+      // also moved the screen would be unusable on the one screen it matters.
+      event.preventDefault();
+      dispatchRef.current(action);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dir]);
+
   /*
    * The words do not wait for the audio. Decoding four stems takes a moment,
    * and the lyrics are the thing on this screen that can be read without a
@@ -405,7 +619,28 @@ export function Player({
   const band = loopBand(loop, state.duration);
 
   return (
-    <div className="player">
+    // tabIndex so the shell itself can hold focus in full screen: the
+    // shortcuts are ignored while a form control has the focus, and something
+    // has to be focused.
+    <div className="player" ref={shellRef} tabIndex={-1} data-cinema={cinema}>
+      <div className="stage-bar">
+        <button type="button" onClick={toggleCinema}>
+          {cinema ? t.player.fullscreen.exit : t.player.fullscreen.enter}
+        </button>
+        {/* The next song is named rather than merely counted: knowing what is
+            coming is what lets somebody decide to skip it before it starts. */}
+        {next !== null ? (
+          <button type="button" className="skip" onClick={goNext}>
+            {t.queue.next}: {next.title}
+          </button>
+        ) : null}
+        <button type="button" className="ghost" onClick={() => setHelp((open) => !open)}>
+          {t.player.shortcuts.show}
+        </button>
+      </div>
+
+      {help ? <Shortcuts t={t} onClose={() => setHelp(false)} /> : null}
+
       <div className="transport">
         <button type="button" onClick={() => void startOrPause()}>
           {state.playing ? t.player.pause : t.player.play}
@@ -437,42 +672,50 @@ export function Player({
         ) : null}
       </div>
 
-      <LoopControls
-        loop={loop}
-        onStart={markLoopStart}
-        onEnd={markLoopEnd}
-        onClear={() => setLoop(clearLoop())}
-        t={t}
-      />
+      {/* Everything below is hidden in full screen rather than unmounted: it
+          is still on the keyboard, and remounting the mixer on every press of
+          F would throw away nothing useful and cost a render of five faders. */}
+      <div className="when-windowed">
+        <LoopControls
+          loop={loop}
+          onStart={markLoopStart}
+          onEnd={markLoopEnd}
+          onClear={() => setLoop(clearLoop())}
+          t={t}
+        />
+      </div>
 
       {words}
-      {lyrics.lines.length > 0 ? (
-        <LyricOffset offsetMs={offsetMs} onChange={nudgeLyrics} t={t} />
-      ) : null}
 
-      <KeyTempo
-        semitones={state.semitones}
-        tempo={state.tempo}
-        t={t}
-        onKey={applyKey}
-        onTempo={applyTempo}
-      />
+      <div className="when-windowed">
+        {lyrics.lines.length > 0 ? (
+          <LyricOffset offsetMs={offsetMs} onChange={nudgeLyrics} t={t} />
+        ) : null}
 
-      <Mixer
-        mix={mix}
-        available={song.stems.map((stem) => stem.kind)}
-        mode={mode}
-        t={t}
-        onVolume={(kind, volume) =>
-          applyMix(
-            kind === "backing"
-              ? setBackingVolume(mix, volume)
-              : setStemVolume(mix, kind as StemKind, volume),
-          )
-        }
-        onToggleVocals={() => applyMix(toggleVocals(mix))}
-        onMode={chooseMode}
-      />
+        <KeyTempo
+          semitones={state.semitones}
+          tempo={state.tempo}
+          t={t}
+          onKey={applyKey}
+          onTempo={applyTempo}
+        />
+
+        <Mixer
+          mix={mix}
+          available={song.stems.map((stem) => stem.kind)}
+          mode={mode}
+          t={t}
+          onVolume={(kind, volume) =>
+            applyMix(
+              kind === "backing"
+                ? setBackingVolume(mix, volume)
+                : setStemVolume(mix, kind as StemKind, volume),
+            )
+          }
+          onToggleVocals={() => applyMix(toggleVocals(mix))}
+          onMode={chooseMode}
+        />
+      </div>
     </div>
   );
 }

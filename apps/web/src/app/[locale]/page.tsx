@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { QueuePanel } from "@/components/QueueControls";
 import { SongRow } from "@/components/SongRow";
 import { getDictionary } from "@/i18n";
 import { isLocale } from "@/i18n/config";
@@ -41,6 +42,10 @@ export default async function Library({ params }: { params: Promise<{ locale: st
           </Link>
         </header>
         <p className="tagline">{t.app.tagline}</p>
+
+        {/* T-5.1: the evening, above the library it was built from. Renders
+            nothing at all until somebody has queued a song. */}
+        <QueuePanel locale={locale} t={t} />
 
         {library.songs.length === 0 ? (
           <div className="card">
