@@ -53,6 +53,22 @@ DEFAULT_WEB = "https://karaoke-theta-blue.vercel.app"
 TIMEOUT = 60
 
 
+# The two request bodies this script sends to the API, as functions rather than
+# as literals buried in the checks below. `tests/test_smoke_payloads.py` pins
+# them to the Pydantic models on the other side, because the first real run of
+# this script failed twice on its own field names - `size_bytes` for `bytes`
+# and `key` for `upload_key` - and reported it as a broken deployment, which is
+# the one thing a smoke test must never do.
+
+
+def upload_ticket_payload(filename: str, size_bytes: int) -> dict[str, object]:
+    return {"filename": filename, "bytes": size_bytes}
+
+
+def song_from_upload_payload(upload_key: str, filename: str) -> dict[str, object]:
+    return {"upload_key": upload_key, "filename": filename}
+
+
 @dataclass
 class Result:
     name: str
@@ -67,6 +83,11 @@ class Smoke:
     song: Path | None = None
     results: list[Result] = field(default_factory=list)
     token: str | None = None
+    # True for a local instance, where chapter 11 says there are no accounts and
+    # every request is the development user. The checks below then run without
+    # a token rather than skipping, which is what makes a local run useful.
+    no_auth: bool = False
+    environment: str = ""
 
     # -- plumbing ------------------------------------------------------------
 
@@ -108,6 +129,10 @@ class Smoke:
         status, body, _ = self.request(f"{self.api}/system/health")
         elapsed = time.monotonic() - started
         payload = json.loads(body or b"{}")
+        # Kept because the next check depends on it: a local run has no accounts
+        # at all (chapter 11), so "the library refuses a request with no token"
+        # is the wrong question to ask it.
+        self.environment = payload.get("environment", "")
         ok = status == 200 and payload.get("status") == "ok"
         cold = " (cold start - the keep-alive is not knocking)" if elapsed > 5 else ""
         self.record(
@@ -127,6 +152,18 @@ class Smoke:
         password = os.getenv("KARUKI_SMOKE_PASSWORD", "")
         supabase = os.getenv("SUPABASE_URL", "")
         key = os.getenv("SUPABASE_ANON_KEY", "")
+
+        if getattr(self, "environment", "") == "local":
+            # Chapter 11: the whole product runs on a machine with no accounts
+            # on it, and `create_app` only refuses that in production. Running
+            # this script against a local instance is worth doing - it is how
+            # the *other* checks get exercised without a password, and it is
+            # what would have caught three wrong field names in this file
+            # before they were shipped - so this check steps aside rather than
+            # failing something that is working as designed.
+            self.no_auth = True
+            self.record("signing in", None, "this instance has no accounts (local)")
+            return
 
         # Whatever else happens, an unauthenticated request must be refused.
         status, body, _ = self.request(f"{self.api}/api/v1/songs")
@@ -180,7 +217,7 @@ class Smoke:
         the failure looks like a broken upload form rather than like
         configuration.
         """
-        if self.token is None:
+        if self.token is None and not self.no_auth:
             self.record("upload goes straight to storage", None, "needs a session")
             return
         song = self.song
@@ -188,7 +225,7 @@ class Smoke:
             self.record("upload goes straight to storage", None, "no --song to upload")
             return
 
-        auth = {"Authorization": f"Bearer {self.token}"}
+        auth = {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
         # Chapter 14's checklist wants the quota checked "by trying to exceed
         # it" (T-3.8), and this is the cheapest honest attempt: a ticket for a
@@ -196,7 +233,7 @@ class Smoke:
         status, body, _ = self.request(
             f"{self.api}/api/v1/songs/upload-url",
             method="POST",
-            data=json.dumps({"filename": "enormous.mp3", "size_bytes": 20_000_000_000}).encode(),
+            data=json.dumps(upload_ticket_payload("enormous.mp3", 20_000_000_000)).encode(),
             headers={**auth, "Content-Type": "application/json"},
         )
         code = json.loads(body or b"{}").get("error", {}).get("code", "")
@@ -209,10 +246,10 @@ class Smoke:
         status, body, _ = self.request(
             f"{self.api}/api/v1/songs/upload-url",
             method="POST",
-            data=json.dumps({"filename": song.name, "size_bytes": song.stat().st_size}).encode(),
+            data=json.dumps(upload_ticket_payload(song.name, song.stat().st_size)).encode(),
             headers={**auth, "Content-Type": "application/json"},
         )
-        if status != 201:
+        if status not in (200, 201):
             self.record("upload goes straight to storage", False, f"no ticket: {status}")
             return
         ticket = json.loads(body)
@@ -249,7 +286,7 @@ class Smoke:
         status, body, _ = self.request(
             f"{self.api}/api/v1/songs",
             method="POST",
-            data=json.dumps({"key": ticket["key"], "filename": song.name}).encode(),
+            data=json.dumps(song_from_upload_payload(ticket["key"], song.name)).encode(),
             headers={**auth, "Content-Type": "application/json"},
         )
         created = json.loads(body or b"{}")
@@ -270,12 +307,13 @@ class Smoke:
         by a buffering proxy.
         """
         job_id = getattr(self, "job_id", None)
-        if not job_id or self.token is None:
+        if not job_id or (self.token is None and not self.no_auth):
             self.record("the progress stream moves", None, "needs an upload")
             return
 
         request = urllib.request.Request(f"{self.api}/api/v1/jobs/{job_id}/events")
-        request.add_header("Authorization", f"Bearer {self.token}")
+        if self.token:
+            request.add_header("Authorization", f"Bearer {self.token}")
         request.add_header("Accept", "text/event-stream")
         request.add_header("User-Agent", USER_AGENT)
         started = time.monotonic()
@@ -304,10 +342,10 @@ class Smoke:
         returns audio bytes from the bucket. Playback itself was measured in a
         browser in T-3.10 and is not something to assert from here.
         """
-        if self.token is None:
+        if self.token is None and not self.no_auth:
             self.record("a processed song opens with audio", None, "needs a session")
             return
-        auth = {"Authorization": f"Bearer {self.token}"}
+        auth = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         status, body, _ = self.request(f"{self.api}/api/v1/songs", headers=auth)
         songs = json.loads(body or b"{}").get("songs", []) if status == 200 else []
         ready = next((s for s in songs if s.get("is_playable")), None)
