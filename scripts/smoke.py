@@ -61,6 +61,19 @@ TIMEOUT = 60
 # the one thing a smoke test must never do.
 
 
+def lowercase(headers: object) -> dict[str, str]:
+    """Header names, lowercased, because HTTP does not care and this did.
+
+    B2 answers a preflight with `access-control-allow-origin` in lower case.
+    Looking it up by the spelling in the specification found nothing, so a
+    bucket that is configured correctly - status 200, the rule in place, the
+    browser uploading through it all day - was reported as refusing the
+    request, with advice to re-run `bucket_cors.py`. That is a smoke test
+    telling somebody to fix something that is not broken.
+    """
+    return {str(name).lower(): str(value) for name, value in dict(headers).items()}
+
+
 def upload_ticket_payload(filename: str, size_bytes: int) -> dict[str, object]:
     return {"filename": filename, "bytes": size_bytes}
 
@@ -111,9 +124,9 @@ class Smoke:
             request.add_header(key, value)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-                return response.status, response.read(), dict(response.headers)
+                return response.status, response.read(), lowercase(response.headers)
         except urllib.error.HTTPError as exc:
-            return exc.code, exc.read(), dict(exc.headers)
+            return exc.code, exc.read(), lowercase(exc.headers)
 
     def record(self, name: str, ok: bool | None, detail: str = "") -> None:
         self.results.append(Result(name, ok, detail))
@@ -265,7 +278,7 @@ class Smoke:
                 "Access-Control-Request-Method": ticket["method"],
             },
         )
-        allowed = headers.get("Access-Control-Allow-Origin", "")
+        allowed = headers.get("access-control-allow-origin", "")
         if not allowed:
             self.record(
                 "upload goes straight to storage",
@@ -369,7 +382,7 @@ class Smoke:
             "a processed song opens with audio",
             status == 200 and len(audio) > 1000 and signed,
             f"{len(stems)} stems, first is {len(audio) / 1e6:.1f}MB of "
-            f"{headers.get('Content-Type', '?')}, link is {'signed' if signed else 'UNSIGNED'}",
+            f"{headers.get('content-type', '?')}, link is {'signed' if signed else 'UNSIGNED'}",
         )
 
     def deliberate_error(self) -> None:

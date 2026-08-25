@@ -1,15 +1,15 @@
 # Chapter 14's deployment checklist
 
 T-3.13. Twelve items, each with what was actually done and where the evidence
-is. Everything marked done was measured against the deployed services; the two
-that are not say so.
+is. Everything marked done was measured against the deployed services; the one
+that is not says so.
 
-**Ten of twelve are done.** Item 11 needs one run of the smoke test with a
-password in the environment — the four checks it skips are the ones that sign
-in — and item 12 needs a phone.
+**Eleven of twelve are done.** The smoke test passed in full on 2026-08-25 —
+eight checks, no failures, nothing skipped. Item 12 needs a phone.
 
-The smoke test that goes with this is `scripts/smoke.py` — six checks, about
-two minutes, run after every deploy. Chapter 14's rule for it is worth
+The smoke test that goes with this is `scripts/smoke.py` — chapter 14's six
+checks plus two this project has paid for, about two minutes, run after every
+deploy. Chapter 14's rule for it is worth
 repeating because it is the point: **if one fails, roll back rather than fix
 forward.**
 
@@ -23,9 +23,9 @@ forward.**
 | 6 | Migrations ran and succeeded | done |
 | 7 | keep-alive active and verified | done |
 | 8 | Error monitoring connected, verified with a deliberate error | done |
-| 9 | User quotas active — verified by trying to exceed one | done in `T-3.8`; the smoke test's own attempt needs a session |
+| 9 | User quotas active — verified by trying to exceed one | done — `413 file_too_large`, live |
 | 10 | Retention policy scheduled, and a successful dry run | done |
-| 11 | The smoke test passed in full | **not in full** — 3 passed, 0 failed, 4 skipped for want of a password |
+| 11 | The smoke test passed in full | done — 8 passed, 0 failed, 0 skipped |
 | 12 | Checked on a real phone, not only a browser simulation | **not done** — `T-0.2.5`, waiting on hardware |
 
 ## 1. No credit card, and caps where they exist
@@ -131,7 +131,8 @@ issue carries the page URL (`T-3.12`).
 Chapter 9's limits are enforced when the upload ticket is issued and shown on
 the account screen (`T-3.8`). The smoke test makes the attempt the checklist
 asks for: a ticket for a file larger than anyone's quota, which must be refused
-with a code before a single byte moves.
+with a code before a single byte moves. Live, on 2026-08-25, it was —
+`413 file_too_large`.
 
 ## 10. Retention, scheduled
 
@@ -177,24 +178,38 @@ rather than reporting them as passes. With `KARUKI_SMOKE_EMAIL` /
 to the bucket, watches the progress stream open, and fetches a stem back
 through a signed link.
 
-**Run against the deployment, 2026-08-24** — `3 passed, 0 failed, 4 skipped`:
+**Run against the deployment, 2026-08-25** — `8 passed, 0 failed, 0 skipped`:
 
 ```
-ok    health answers  - 200 in 3.77s, up 4416s
-ok    the web app serves its Hebrew page  - 200, 19KB
-skip  signing in  - no KARUKI_SMOKE_EMAIL/PASSWORD; unauthenticated is refused (401)
-skip  upload goes straight to storage  - needs a session
-skip  the progress stream moves  - needs an upload
-skip  a processed song opens with audio  - needs a session
-ok    a deliberate error reaches monitoring  - 500, request_id d635da0d…
+ok  health answers  - 200 in 0.86s, up 264s
+ok  the web app serves its Hebrew page  - 200, 19KB
+ok  signing in  - token accepted by the API, library has 4 song(s)
+ok  an over-quota upload is refused  - 413 file_too_large
+ok  upload goes straight to storage  - preflight allows https://karaoke-theta-blue.vercel.app, 2.8MB in 13.7s
+ok  the progress stream moves  - first frame in 0.70s
+ok  a processed song opens with audio  - 4 stems, first is 0.6MB of audio/mpeg, link is signed
+ok  a deliberate error reaches monitoring  - 500, request_id 60cbdf2a…
 ```
 
-The four skips are the ones that need somebody's password, and the honest
-reading of this run is that **the smoke test has not passed in full** — see
-item 11's status in the table at the top. The same four were each carried out
-by hand during `T-3.10` and `D-18`'s repair, which is why the deployment is
-believed to work; the point of the script is that next time it is one command
-and not an afternoon.
+**It took three runs to get there, and the first two failed on the script
+itself.** That is worth recording, because chapter 14's rule is that a failed
+check means roll back: a smoke test that fails for its own reasons very nearly
+caused the rollback of a deployment that was working.
+
+1. `422 invalid_request` twice — the script sent `size_bytes` for `bytes` and
+   `key` for `upload_key`, so the request never reached the quota check it was
+   supposed to be making. `tests/test_smoke_payloads.py` now pins both bodies
+   to the API's own models.
+2. "the bucket refused the preflight (200); run `bucket_cors.py --apply`" — on
+   a bucket that was configured correctly. B2 answers with
+   `access-control-allow-origin` in lower case and the script looked it up by
+   the specification's spelling. Header names are normalised now, and the same
+   answer carries `Content-Type` capitalised, which is why normalising beats
+   picking a different spelling.
+
+The earlier no-credentials run is the other half of the design and still worth
+having: `3 passed, 0 failed, 4 skipped`, where the four are the ones that need
+a password. Skips are printed as skips and never counted as passes.
 
 Worth knowing before running it here: this machine's TLS inspection breaks
 `curl` against `*.onrender.com` and `*.vercel.app` while leaving other hosts

@@ -37,3 +37,24 @@ def test_the_script_reads_the_ticket_fields_the_api_sends():
     `key` back. A rename on the API side would be a live failure otherwise."""
     for field in ("key", "url", "method"):
         assert field in UploadTicket.model_fields
+
+
+def test_header_names_are_matched_regardless_of_case():
+    """The second thing the first live run got wrong, and the same shape as the
+    first: B2 answers a preflight with `access-control-allow-origin` in lower
+    case, the script looked it up by the specification's spelling, and a bucket
+    that was configured correctly - 200, the rule in place, the browser
+    uploading through it all day - was reported as refusing the request, with
+    advice to re-run `bucket_cors.py` on it."""
+    from email.message import Message
+
+    from scripts.smoke import lowercase
+
+    headers = Message()
+    headers["access-control-allow-origin"] = "https://example.test"
+    headers["Content-Type"] = "audio/mpeg"
+
+    normalised = lowercase(headers)
+
+    assert normalised["access-control-allow-origin"] == "https://example.test"
+    assert normalised["content-type"] == "audio/mpeg"

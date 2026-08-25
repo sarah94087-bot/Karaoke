@@ -192,9 +192,9 @@ songs nobody sings any more removed on a schedule, the whole thing deployed and
 taken through one song end to end from its public address, a keep-alive that
 was measured rather than assumed, errors that report themselves, and chapter
 14's checklist with the evidence for each item in
-`docs/phase3/deploy-checklist.md`. **Ten of its twelve are done**: the smoke
-test still needs one run with a password in the environment, and the phone
-(`T-0.2.5`) is still waiting on hardware.
+`docs/phase3/deploy-checklist.md`. **Eleven of its twelve are done** - the
+smoke test passed in full on 2026-08-25, eight checks with nothing skipped -
+and the twelfth is the phone (`T-0.2.5`), still waiting on hardware.
 
 **Docker Desktop crashes on a stale socket after an unclean shutdown**, and the
 dialog offers "Reset to factory defaults" right next to "Quit". Do not take it:
@@ -1573,3 +1573,20 @@ From `T-3.13`:
   hosts alone - TCP connects, the handshake renegotiates and hangs. The same
   requests through `trust_system_certificates()` answer in under a second, so
   the project's own scripts are unaffected and `curl` is the thing that lies.
+- **The smoke test failed twice on itself before it passed**, and that is the
+  part worth remembering: chapter 14 says a failed check means roll back, so a
+  tool that fails for its own reasons nearly rolled back a working deployment.
+  Both were the script's own vocabulary - `size_bytes` for `bytes` and `key`
+  for `upload_key`, which FastAPI answered with `422` and the screen read as a
+  broken quota; then a preflight looked up as `Access-Control-Allow-Origin`
+  when B2 sends `access-control-allow-origin`, which read as a misconfigured
+  bucket and advised re-running `bucket_cors.py` on one that was working.
+  `tests/test_smoke_payloads.py` pins the request bodies to the API's models
+  and the header lookup to lower case. The script also runs against a **local**
+  instance now (no accounts, chapter 11, so the sign-in check steps aside),
+  which is how that class of bug gets caught without a password or a deploy.
+- **It passed in full on 2026-08-25**: `8 passed, 0 failed, 0 skipped`,
+  including the two that had never run - an over-quota upload refused with
+  `413 file_too_large`, and 2.8MB going browser-to-bucket in 13.7s with the
+  preflight allowing the deployed origin. Checklist item 11 is done; **eleven
+  of twelve**, and the twelfth is the phone.
