@@ -1868,6 +1868,14 @@ From `T-5.3`:
   do not change, so a deploy has to be picked up at once. **`pitch-worklet.js`
   is the one that decides this**: T-1.12's zero-drift measurement belongs to a
   specific version of that file, and cache-first would pin an old one silently.
+- **The prefix is `/_next/static/`, and it has to stay that loose.** The
+  deployed build serves its chunks from `/_next/static/immutable/chunks/`
+  while the local one uses `/_next/static/chunks/`, so a rule tightened to
+  either exact path would stop matching on the other - and the failure is
+  silent: nothing breaks, the app simply stops being fast and nobody is told.
+  Found because a script written to check the deployment grepped the HTML for
+  the local shape, reported "not found" for a build that was there all along,
+  and nearly had the deploy declared broken.
 - **Development does not skip the worker, it unregisters one.** A worker is
   scoped to an origin, and `next start` and `next dev` are the same origin on
   this machine - so a worker left behind by a production check goes on
