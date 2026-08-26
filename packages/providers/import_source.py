@@ -314,7 +314,7 @@ class YtDlp:
                 info = reader.extract_info(url, download=True)
                 downloaded = Path(reader.prepare_filename(info))
         except Exception as exc:  # yt-dlp raises its own hierarchy
-            raise SourceError("import_failed", f"could not read that link: {exc}") from exc
+            raise _what_yt_dlp_meant(exc) from exc
 
         if not downloaded.is_file():
             # What `max_filesize` does when the file is over the limit: it
@@ -387,6 +387,91 @@ def _refuse_a_stub(downloaded: Path, info: dict[str, object]) -> None:
         "import_incomplete",
         f"that link handed over {arrived} bytes of the {int(declared)} it promised",
     )
+
+
+def _what_yt_dlp_meant(exc: Exception) -> SourceError:
+    """Turn yt-dlp's own sentence into a code the screen can say in Hebrew.
+
+    Measured on 2026-08-26, on the latest yt-dlp (2026.08.19), against a real
+    YouTube link: the 145KB stub of 2026-08-25 is gone and the refusal is now
+    explicit - `Sign in to confirm you're not a bot`. Eight player clients were
+    tried and none returns a stream that can be downloaded: `tv`, `tv_simply`,
+    `android_vr` and the default are refused on the bot check, `ios`, `mweb`
+    and `web_safari` answer "Requested format is not available", and
+    `web_embedded` raises `KeyError('INNERTUBE_CONTEXT')`.
+
+    So there is no code fix for YouTube and this function is not attempting
+    one. What is missing is a *credential* - an exported cookie file from a
+    signed-in account, or a PO-token provider running beside the API - which
+    this project does not hold and did not decide to start holding. What is
+    fixable is the sentence somebody reads: without this, that refusal reaches
+    a Hebrew page as an English paragraph with two GitHub links in it, filed
+    under `import_failed`, whose text invites a retry that can never work.
+    """
+    message = str(exc)
+    said = message.lower()
+
+    # yt-dlp being broken is the operator's problem and not the link's -
+    # T-1.7's distinction, and the reason these are a 503 rather than a 400.
+    # It says so in two different ways. Usually it asks to be sent a bug
+    # report, which is how the `web_embedded` client's `KeyError` arrives. But
+    # it can also simply crash: `dQw4w9WgXcQ` raises a bare `TypeError` out of
+    # its own `_video.py`, and an exception from outside yt-dlp's hierarchy is
+    # never a statement about the address - it is a stack trace with nobody to
+    # read it.
+    if _YT_DLP_IS_BROKEN in said or not _is_a_yt_dlp_error(exc):
+        return SourceUnavailable(
+            "import_unavailable", f"yt-dlp could not read that link: {message}"
+        )
+
+    if any(marker in said for marker in _NEEDS_A_SIGNED_IN_ACCOUNT):
+        return SourceError("import_needs_signin", message)
+
+    if any(marker in said for marker in _GONE_OR_NEVER_PUBLIC):
+        return SourceError("import_video_unavailable", message)
+
+    return SourceError("import_failed", f"could not read that link: {message}")
+
+
+# Nothing the person who pasted the link can do: not a retry, and not a
+# different link from the same place. Matched on the lower-cased message and
+# never on the apostrophe - yt-dlp writes "you're" with U+2019.
+_NEEDS_A_SIGNED_IN_ACCOUNT = (
+    "sign in to confirm",
+    "not a bot",
+    "age-restricted",
+    "members-only",
+    "music premium",
+)
+
+# A different link might well work; this one is gone, or was never public, or
+# is not public here. Worth its own code because `import_failed` says "try
+# again", which is the wrong advice for every one of these.
+_GONE_OR_NEVER_PUBLIC = (
+    "video unavailable",
+    "private video",
+    "has been removed",
+    "available in your country",
+    "available from your location",
+)
+
+_YT_DLP_IS_BROKEN = "please report this issue"
+
+
+def _is_a_yt_dlp_error(exc: Exception) -> bool:
+    """Did yt-dlp mean to raise this, or did it fall over?
+
+    A library that cannot be asked - it is optional, and this runs inside the
+    handler for its absence - answers "yes" and lets the rest of the rules
+    decide, because a guess about which exceptions exist is worse than the
+    message itself.
+    """
+    try:
+        import yt_dlp
+    except ImportError:  # pragma: no cover - `fetch` has already refused
+        return True
+    deliberate = getattr(getattr(yt_dlp, "utils", None), "YoutubeDLError", None)
+    return not isinstance(deliberate, type) or isinstance(exc, deliberate)
 
 
 def _suffix_from(url: str) -> str | None:

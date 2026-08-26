@@ -244,6 +244,8 @@
     "import_not_audio": "What is at that address is not an audio file.",
     "import_too_large": "The file at that address is too large.",
     "import_incomplete": "That link handed over only a fragment of the recording, so it was not imported.",
+    "import_needs_signin": "That site will only hand over the recording to a signed-in account, and we do not have one. Upload the file instead.",
+    "import_video_unavailable": "That recording is no longer available at that address. Try another link, or upload a file.",
     "import_failed": "The import failed. Try again, or upload a file instead.",
     "song_title_empty": "A song needs a name.",
     "song_name_too_long": "That name is too long. Up to 200 characters."

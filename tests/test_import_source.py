@@ -398,3 +398,134 @@ def test_yt_dlp_asks_for_the_system_certificates_first(
     YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
 
     assert asked == [True]
+
+
+class FakeYoutubeDLError(Exception):
+    """Stands in for `yt_dlp.utils.YoutubeDLError` - what yt-dlp raises on
+    purpose, as opposed to what it raises by falling over."""
+
+
+def _yt_dlp_that_refuses(message: str, deliberate: bool = True):
+    """A stand-in that fails the way the real library fails, and says so.
+
+    The messages the cases below use are the real ones, copied from live runs
+    against YouTube on 2026-08-26 rather than written from memory - which
+    matters, because every one of these rules is a substring match and a
+    remembered wording would pass this test and match nothing in production.
+
+    `deliberate` is the difference between yt-dlp refusing and yt-dlp
+    breaking, which the classifier reads from the exception's class and not
+    from its text - so the fake has to carry the same hierarchy.
+    """
+
+    class Reader:
+        def __init__(self, options: dict[str, object]) -> None:
+            pass
+
+        def __enter__(self) -> "Reader":
+            return self
+
+        def __exit__(self, *_: object) -> bool:
+            return False
+
+        def extract_info(self, url: str, download: bool = True) -> dict[str, object]:
+            raise FakeYoutubeDLError(message) if deliberate else TypeError(message)
+
+    return types.SimpleNamespace(
+        YoutubeDL=Reader,
+        utils=types.SimpleNamespace(YoutubeDLError=FakeYoutubeDLError),
+    )
+
+
+# The left column is what yt-dlp said on a real run; the right is what the
+# person who pasted the link needs to be told.
+REFUSALS = [
+    (
+        "ERROR: [youtube] lYBUbBu4W08: Sign in to confirm you’re not a bot. "
+        "Use --cookies-from-browser or --cookies for the authentication. See "
+        "https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp",
+        "import_needs_signin",
+    ),
+    ("ERROR: [youtube] abc: Sign in to confirm your age", "import_needs_signin"),
+    (
+        "ERROR: [youtube] abc: Join this channel to get access to members-only content",
+        "import_needs_signin",
+    ),
+    ("ERROR: [youtube] abc: Video unavailable", "import_video_unavailable"),
+    (
+        "ERROR: [youtube] abc: Private video. Sign in if you've been granted access",
+        "import_video_unavailable",
+    ),
+    (
+        "ERROR: [youtube] abc: The uploader has not made this video available in your country",
+        "import_video_unavailable",
+    ),
+    ("ERROR: [youtube] abc: Requested format is not available", "import_failed"),
+]
+
+
+@pytest.mark.parametrize("message, expected", REFUSALS)
+def test_yt_dlp_refusals_reach_the_screen_as_something_a_person_can_act_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, message: str, expected: str
+):
+    """The whole of what this project can do about YouTube.
+
+    Measured on 2026-08-26 on the latest yt-dlp: no player client returns a
+    downloadable stream any more, so the import cannot be made to work without
+    a credential this project does not hold. What it can do is stop showing an
+    English paragraph with GitHub links in it under a code whose Hebrew text
+    says "try again" - which, for every case above, it can never be.
+    """
+    monkeypatch.setitem(sys.modules, "yt_dlp", _yt_dlp_that_refuses(message))
+
+    with pytest.raises(SourceError) as raised:
+        YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert raised.value.code == expected
+
+
+def test_yt_dlp_breaking_is_the_operators_problem_and_not_the_links(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """`web_embedded` raised `KeyError('INNERTUBE_CONTEXT')` on the same run.
+
+    yt-dlp asking to be sent a bug report is yt-dlp being broken, so this is
+    T-1.7's distinction: `SourceUnavailable` and a 503, not a 400 telling a
+    user to go and find a better link.
+    """
+    monkeypatch.setitem(
+        sys.modules,
+        "yt_dlp",
+        _yt_dlp_that_refuses(
+            "ERROR: abc: An extractor error has occurred. (caused by "
+            "KeyError('INNERTUBE_CONTEXT')); please report this issue on "
+            "https://github.com/yt-dlp/yt-dlp/issues?q="
+        ),
+    )
+
+    with pytest.raises(SourceUnavailable) as raised:
+        YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert raised.value.code == "import_unavailable"
+
+
+def test_yt_dlp_falling_over_is_the_operators_problem_too(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The same thing said the other way, and the case that needs the class
+    rather than the text: measured live on 2026-08-26, `dQw4w9WgXcQ` raises a
+    bare `TypeError('expected string or bytes-like object, got NoneType')` out
+    of yt-dlp's own `_video.py`. There is no wording to match there, and no
+    reading of it that is about the address somebody pasted."""
+    monkeypatch.setitem(
+        sys.modules,
+        "yt_dlp",
+        _yt_dlp_that_refuses(
+            "expected string or bytes-like object, got 'NoneType'", deliberate=False
+        ),
+    )
+
+    with pytest.raises(SourceUnavailable) as raised:
+        YtDlp().fetch(f"https://{PUBLIC}/watch?v=abc", tmp_path, 40 * 1024 * 1024)
+
+    assert raised.value.code == "import_unavailable"

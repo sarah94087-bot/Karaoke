@@ -1843,6 +1843,43 @@ From the attempt to make YouTube links work (2026-08-25, on top of `T-4.1`):
   the deployment is not expected to differ - but that part is an inference and
   was not measured.
 
+Re-measured 2026-08-26, and the conclusion is unchanged but the evidence is
+better:
+
+- **The stub is gone and the refusal is explicit.** On the same yt-dlp
+  (2026.08.19, which is the newest on PyPI) YouTube now answers `Sign in to
+  confirm you're not a bot`. Eight player clients were tried and **none**
+  returns a downloadable stream: `tv`, `tv_simply`, `android_vr` and the
+  default are refused on the bot check; `ios`, `mweb` and `web_safari` answer
+  "Requested format is not available"; `web_embedded` raises
+  `KeyError('INNERTUBE_CONTEXT')`. `--cookies-from-browser` is not a way round
+  it here either - Chrome and Edge lock the cookie database while the browser
+  is open (yt-dlp issue 7271) and Firefox is not installed.
+- **So there is no code fix, and none was attempted.** What is missing is a
+  credential - an exported cookie file from a signed-in account, or a PO-token
+  provider running beside the API - which this project does not hold and did
+  not decide to start holding. `KARUKI_IMPORT=direct` stays, and `yt-dlp` stays
+  out of `pyproject.toml`.
+- **What was fixed is the sentence somebody reads.** That refusal used to reach
+  a Hebrew page as an English paragraph with two GitHub links in it, under
+  `import_failed` - whose text invites a retry that can never work.
+  `_what_yt_dlp_meant` now sorts yt-dlp's own message into
+  `import_needs_signin` (nothing this person can do), `import_video_unavailable`
+  (a different link might work; `import_failed`'s "try again" is wrong advice
+  for a removed video), `import_unavailable` (T-1.7's distinction - the
+  operator's problem, and a 503 rather than a 400), or the generic code.
+- **yt-dlp says "I am broken" in two different ways**, which is why that last
+  one reads the exception's *class* and not only its text. Usually it asks to
+  be sent a bug report, which is how the `web_embedded` `KeyError` arrives -
+  but `dQw4w9WgXcQ` raises a bare `TypeError` out of yt-dlp's own `_video.py`,
+  where there is no wording to match and no reading of it that is about the
+  address somebody pasted.
+- The rules are substring matches, so **the test uses the real messages**,
+  copied from the live runs - a remembered wording would pass the test and
+  match nothing in production. And the classifier was then run live through the
+  real resolver, which is the only place this claim means anything: the two
+  links above come back `import_needs_signin` and `import_unavailable`.
+
 From `T-5.3`:
 
 - **A PWA here is three files and no plugin.** `next-pwa` and its relatives
