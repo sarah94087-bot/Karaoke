@@ -25,12 +25,34 @@
  * So: same-origin GET only, and within that, two strategies.
  */
 
-const VERSION = "v1";
+// Bumped to v2 when the rule below tightened: `activate` deletes every cache
+// that is not the current one, so a new name is also how the entries the old
+// rule let in are cleared out.
+const VERSION = "v2";
 const CACHE = `karuki-${VERSION}`;
 const OFFLINE_PAGE = "/offline.html";
 
 /** Enough to open the app, and nothing that changes per person. */
 const PRECACHE = [OFFLINE_PAGE, "/icon-192.png", "/icon-512.png"];
+
+/**
+ * Our own files, by name, because "same-origin" turned out not to mean "ours".
+ *
+ * A list rather than a pattern, and that is the point: a live check on the
+ * deployment found 32KB of a browser extension's script in this cache, served
+ * `200` from our origin because the extension answers requests it injects into
+ * the page. Anything not named here and not content-hashed goes to the network
+ * and is not kept.
+ */
+const OUR_FILES = new Set([
+  "/pitch-worklet.js",
+  "/manifest.webmanifest",
+  OFFLINE_PAGE,
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+]);
 
 /**
  * What to do with one request.
@@ -65,7 +87,20 @@ function strategyFor(request, selfOrigin) {
   // else of ours may change under the same name.
   if (url.pathname.startsWith("/_next/static/")) return "immutable";
 
-  return "fresh";
+  // A page, asked for as a page. Deliberately not "any request for a page
+  // URL": the App Router also fetches the same address as RSC payloads with
+  // `Vary: RSC, Next-Router-State-Tree`, and Cache Storage keys on those
+  // headers - so every prefetch stored another copy of a page already held.
+  // Measured on the deployment: 39 entries where a dozen were expected, with
+  // `/he` twice and some song pages three times. A payload is a client-side
+  // optimisation and nothing offline needs it.
+  if (request.mode === "navigate") return "fresh";
+
+  if (OUR_FILES.has(url.pathname)) return "fresh";
+
+  // Same origin, ours to serve, and nothing we recognise. Fetch it and forget
+  // it - see OUR_FILES.
+  return "network";
 }
 
 async function fromCacheFirst(request) {

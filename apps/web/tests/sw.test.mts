@@ -23,6 +23,8 @@ const { strategyFor, PRECACHE, OFFLINE_PAGE } = require("../public/sw.js");
 
 const SELF = "https://karaoke-theta-blue.vercel.app";
 const get = (url: string) => ({ method: "GET", url });
+/** A document navigation, which is the only thing that counts as a page. */
+const page = (url: string) => ({ method: "GET", url, mode: "navigate" });
 
 test("anything that is not a GET goes to the network", () => {
   // Uploading a song, saving settings, marking a song played.
@@ -78,8 +80,26 @@ test("our own files that are not hashed are fetched fresh first", () => {
 });
 
 test("pages are fetched fresh first, so a deploy is picked up at once", () => {
-  assert.equal(strategyFor(get(`${SELF}/he`), SELF), "fresh");
-  assert.equal(strategyFor(get(`${SELF}/he/songs/abc`), SELF), "fresh");
+  assert.equal(strategyFor(page(`${SELF}/he`), SELF), "fresh");
+  assert.equal(strategyFor(page(`${SELF}/he/songs/abc`), SELF), "fresh");
+});
+
+test("the router's own fetch for a page is not a page", () => {
+  // The App Router asks for the same address again as an RSC payload, and
+  // Cache Storage keys on the `Vary: RSC, Next-Router-State-Tree` those carry
+  // - so every prefetch used to store another copy of a page already held.
+  // Measured on the deployment: 39 entries where a dozen were expected.
+  assert.equal(strategyFor(get(`${SELF}/he`), SELF), "network");
+  assert.equal(strategyFor(get(`${SELF}/he/songs/abc`), SELF), "network");
+});
+
+test("same origin is not the same as ours", () => {
+  // A browser extension answering a request it injected into the page is
+  // served from our origin with a 200. 32KB of one was found in this cache on
+  // the deployment, which is what turned the rule from "anything same-origin"
+  // into a list of names.
+  assert.equal(strategyFor(get(`${SELF}/jsQuilting/server/etAddOn.js`), SELF), "network");
+  assert.equal(strategyFor(get(`${SELF}/something-we-never-shipped.js`), SELF), "network");
 });
 
 test("the offline page is precached, or there is nothing to fall back to", () => {

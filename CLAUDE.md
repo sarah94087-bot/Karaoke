@@ -1911,3 +1911,55 @@ From `T-5.3`:
   surface need not implement the install flow at all. The three documented
   criteria are each verified separately above. The real check is a phone, which
   is `T-0.2.5` and has been blocked on hardware since phase 0.
+
+From the comprehensive check against the deployment (2026-08-26, after `T-5.3`):
+
+- **Two bugs that only a live check on the deployment would have found**, both
+  in code written the day before, both fixed here.
+- **The queue lost a click.** Three "add to queue" presses in one tick left one
+  song queued; with 600ms between them all three landed. Every `QueueButton`
+  holds its own copy of the queue from its last render, React had not
+  re-rendered any of them between the presses, so all three computed from the
+  same empty list and the last write won. `useQueue`'s `write` now takes an
+  updater and applies it to `loadQueue()` - storage is the shared truth, so
+  reading it at write time is both the correct fix and the cheap one. This is
+  the same shape as the bug T-2.9 found in the lyrics editor's nudge buttons,
+  which is twice now in this project: **a React snapshot is not a safe base for
+  a write that another component can also make.**
+- **"Same origin" turned out not to mean "ours", twice over.**
+  - Next's App Router fetches every page address a second time as an RSC
+    payload, and those responses carry `Vary: RSC, Next-Router-State-Tree`.
+    Cache Storage keys on `Vary`, so each prefetch stored *another copy* of a
+    page already held: measured on the deployment, **39 entries where a dozen
+    were expected**, with `/he` twice and some song pages three times.
+  - A browser extension (the Etrog toolbar, installed in the developer's
+    Chrome) answers a request it injects into the page, served from our origin
+    with a `200` - so **32KB of somebody else's script** was sitting in this
+    app's cache.
+  - One rule change closes both: `strategyFor` now caches a page only when the
+    request is an actual navigation (`request.mode === "navigate"`), plus a
+    **named list** of our own static files (`OUR_FILES`), and sends every other
+    same-origin request that is not content-hashed to the network unkept. After
+    it, browsing the same pages twice over gives 18 entries, **zero
+    duplicates**, zero foreign files.
+  - The cache name went to `karuki-v2`, which is also how the polluted v1 gets
+    deleted - `activate` drops every cache that is not the current one.
+- **What was right and stayed right**: no signed URL, no stem, no API response
+  and no foreign origin was ever in that cache, on the deployment, including
+  after a song page had fetched four stems from B2. That is the property the
+  whole design of `sw.js` is arranged around, and it held.
+- `T-5.1` was measured end to end on the deployment: `0:07` song ran out and
+  the next one started **on its own** at 21.0s, the seek shortcut moved the
+  clock to `0:40`, that song ran out and the third started at 38.8s, with
+  `?autoplay=1` stripped from the address each time. Full screen entered.
+  Between songs on the deployment is ~2.5-4s, against ~2.5s locally - the
+  difference is four stems coming from Amsterdam.
+- `scripts/smoke.py` against the deployment: `2 passed, 0 failed, 5 skipped`.
+  The skips need `KARUKI_SMOKE_EMAIL`/`PASSWORD` and `KARUKI_ERROR_PROBE_TOKEN`,
+  which live in the environment and not in the repository.
+- **Still not observed: the install prompt.** `beforeinstallprompt` did not
+  fire in the developer's real Chrome either, and that remains inconclusive
+  rather than negative - Chrome defers the event behind an engagement heuristic
+  and a listener attached after load misses it. The manifest, the icons and the
+  worker are each verified on the deployment; installing from Chrome's own menu
+  is the check that settles it, and a phone is `T-0.2.5`.

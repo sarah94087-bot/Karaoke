@@ -37,7 +37,7 @@ import {
  * Both events matter: `storage` is fired in *other* tabs, and the custom one is
  * how the button and the panel on this screen hear each other.
  */
-export function useQueue(): [Queue, (next: Queue) => void] {
+export function useQueue(): [Queue, (update: (current: Queue) => Queue) => void] {
   const [queue, setQueue] = useState<Queue>(EMPTY_QUEUE);
 
   useEffect(() => {
@@ -51,7 +51,19 @@ export function useQueue(): [Queue, (next: Queue) => void] {
     };
   }, []);
 
-  const write = useCallback((next: Queue) => {
+  /**
+   * Write against what is *stored*, not against the render's snapshot.
+   *
+   * A live check on the deployment found this: three "add to queue" presses in
+   * one tick left one song queued. Every button holds its own copy of the
+   * queue from its last render, and React had not re-rendered any of them
+   * between the presses - so all three computed from the same empty list and
+   * the last write won. Storage is the shared truth here, so reading it at
+   * write time is both the correct fix and the cheap one. Same shape as the
+   * bug T-2.9 found in the lyrics editor's nudge buttons.
+   */
+  const write = useCallback((update: (current: Queue) => Queue) => {
+    const next = update(loadQueue());
     storeQueue(next);
     setQueue(next);
   }, []);
@@ -75,7 +87,11 @@ export function QueueButton({ song, t }: { song: QueueEntry; t: Dictionary }) {
       type="button"
       className="queue-button"
       data-queued={queued}
-      onClick={() => write(queued ? dequeue(queue, song.id) : enqueue(queue, song))}
+      onClick={() =>
+        write((current) =>
+          contains(current, song.id) ? dequeue(current, song.id) : enqueue(current, song),
+        )
+      }
     >
       {queued ? t.queue.remove : t.queue.add}
       {queued ? <span className="ltr-number"> {positionOf(queue, song.id)}</span> : null}
@@ -105,7 +121,7 @@ export function QueuePanel({ locale, t }: { locale: string; t: Dictionary }) {
         {queue.entries.map((entry) => (
           <li key={entry.id}>
             <Link href={`/${locale}/songs/${entry.id}`}>{entry.title}</Link>
-            <button type="button" onClick={() => write(dequeue(queue, entry.id))}>
+            <button type="button" onClick={() => write((current) => dequeue(current, entry.id))}>
               {t.queue.remove}
             </button>
           </li>
@@ -120,7 +136,7 @@ export function QueuePanel({ locale, t }: { locale: string; t: Dictionary }) {
         <Link className="button-link" href={`/${locale}/songs/${first.id}?autoplay=1`}>
           {t.queue.start}
         </Link>
-        <button type="button" onClick={() => write(EMPTY_QUEUE)}>
+        <button type="button" onClick={() => write(() => EMPTY_QUEUE)}>
           {t.queue.clear}
         </button>
       </div>
