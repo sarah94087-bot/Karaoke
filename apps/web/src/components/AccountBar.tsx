@@ -43,10 +43,18 @@ export function AccountBar({ t, locale }: { t: Dictionary; locale: string }) {
       router.refresh();
       return;
     }
-    void currentSession().then((found) => {
+    void currentSession().then(({ session: found, refreshed }) => {
       if (cancelled) return;
       setSession(found);
       setKnown(true);
+      // The same reasoning as the branch above, for the case nobody clicked a
+      // link to get here: the token was renewed, so the page on the screen was
+      // built with the one before it. If that one had expired, the server
+      // asked the API with it, got a 401, and drew the signed-out screen for
+      // somebody who is signed in. Redrawing costs one request and is the
+      // difference between "opened the app in the morning and it had logged me
+      // out" and not noticing anything at all.
+      if (refreshed) router.refresh();
     });
     return () => {
       cancelled = true;

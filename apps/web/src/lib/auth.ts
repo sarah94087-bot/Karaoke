@@ -339,21 +339,37 @@ export async function refresh(session: Session): Promise<Session> {
   return fresh;
 }
 
+export interface CurrentSession {
+  session: Session | null;
+  /**
+   * True when this call renewed the access token.
+   *
+   * It matters to the caller and not only to this file: the pages here are
+   * server-rendered, so a renewal means the HTML on the screen was built with
+   * the *previous* token - and if that one had already expired, the server
+   * asked the API with it, got a 401, and rendered the signed-out screen for
+   * somebody whose session is perfectly good. Measured on the deployment: after
+   * an idle hour the library said "sign in" while the account bar showed the
+   * signed-in address, and one reload put it right.
+   */
+  refreshed: boolean;
+}
+
 /**
  * The session to use right now, refreshed if it is close to expiring.
  *
- * Returns null when there is nobody signed in, or when the refresh token has
- * been used up - which is indistinguishable from signed out and is treated as
- * it.
+ * `session` is null when there is nobody signed in, or when the refresh token
+ * has been used up - which is indistinguishable from signed out and is treated
+ * as it. `refreshed` is what the caller has to act on; see above.
  */
-export async function currentSession(): Promise<Session | null> {
+export async function currentSession(): Promise<CurrentSession> {
   const session = readCookie();
-  if (session === null) return null;
-  if (!needsRefresh(session)) return session;
+  if (session === null) return { session: null, refreshed: false };
+  if (!needsRefresh(session)) return { session, refreshed: false };
   try {
-    return await refresh(session);
+    return { session: await refresh(session), refreshed: true };
   } catch {
     writeCookie(null);
-    return null;
+    return { session: null, refreshed: false };
   }
 }

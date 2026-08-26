@@ -1963,3 +1963,19 @@ From the comprehensive check against the deployment (2026-08-26, after `T-5.3`):
   and a listener attached after load misses it. The manifest, the icons and the
   worker are each verified on the deployment; installing from Chrome's own menu
   is the check that settles it, and a phone is `T-0.2.5`.
+
+- **A third bug from the same session: signed out for exactly one page load.**
+  After an idle hour the deployment showed "צריך להיכנס לחשבון" while the account bar showed
+  the signed-in address - two halves of one page disagreeing about whether
+  anybody is signed in. The sequence, measured: the access token lives an hour
+  and had expired; the server read the cookie, asked the API with that token,
+  got a `401`, and rendered the signed-out screen; the client then hydrated,
+  `AccountBar` saw `needsRefresh`, renewed it, and wrote a cookie good for
+  another 3566 seconds - but nothing told the page that had already been drawn.
+  One reload put it right, which is exactly what makes it look like being
+  logged out rather than like a fault.
+  `currentSession` now reports **whether it renewed**, and `AccountBar` calls
+  `router.refresh()` when it did. The same one-line answer was already in the
+  branch above it for a session arriving in a link (T-3.6), with the same
+  comment about the page having been server-rendered for somebody else - this
+  is that case for the person who simply came back in the morning.
