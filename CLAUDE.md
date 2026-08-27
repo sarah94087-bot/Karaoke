@@ -1879,6 +1879,35 @@ better:
   match nothing in production. And the classifier was then run live through the
   real resolver, which is the only place this claim means anything: the two
   links above come back `import_needs_signin` and `import_unavailable`.
+- **The stub is a constant, which is the strongest evidence there is.** Asked on
+  2026-08-26 whether a specific song works, and it does not - but it failed in
+  a *third* way, and the number is what matters. `cceyzuE5fIU` resolves
+  perfectly: title, uploader, 221 seconds, format 251 opus, **3,592,594 bytes
+  declared**. The download then hands over **145,107 bytes** - the same count,
+  to the byte, that a 288-second video with a 4,949,491-byte format returned on
+  2026-08-25. An identical size across three videos, two formats and two
+  declared lengths is not a transfer that broke; a download that breaks does
+  not stop twice on the same byte. It is a fixed response served to a client
+  that has not passed the player challenge.
+- `_refuse_a_stub` caught it exactly as designed: 4% of the promise, well under
+  `MIN_COMPLETE_FRACTION`, the fragment deleted rather than left in staging,
+  and `import_incomplete` on the screen. **No song row and no GPU seconds** -
+  which is the whole reason that guard was written.
+- `noplaylist` was confirmed at the same time: the link carried
+  `&list=RDMM…&index=2` and the resolver took the single song, not the list.
+- **The JS challenge is not what is missing.** yt-dlp now warns that extraction
+  without a JavaScript runtime is deprecated, and it enables only `deno` by
+  default even when node is installed - `js_runtimes` is what turns node on.
+  Installing `yt-dlp-ejs` and enabling node made the challenge solver active
+  (`[jsc] ... node`, no longer "unavailable") and the download returned **the
+  same 145,107 bytes**. So the missing piece is the PO token specifically, not
+  the signature challenge.
+- The only credential-free lever left is a PO-token provider, and its cost is
+  the reason this stays shut: `bgutil-ytdlp-pot-provider`'s Python half is on
+  PyPI, but its backend **is not on npm** - it is a repository to clone and
+  build, and then a second Node service running beside the API. That is a
+  supply-chain decision and a second runtime in a deployment that chapter 14
+  sizes for one free instance, for a resolver that is still off by default.
 
 From `T-5.3`:
 
